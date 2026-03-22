@@ -8,11 +8,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="記帳本">
   <meta name="description" content="個人記帳 PWA，支援電子發票匯入與 Google Drive 備份">
-
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="stylesheet" href="styles.css">
-
   <title>記帳本</title>
 </head>
 <body>
@@ -27,11 +25,11 @@
   <header id="app-header">
     <h1>記帳本</h1>
     <div class="header-right">
-      <span id="version-badge">V0.4</span>
+      <span id="version-badge">V0.5</span>
     </div>
   </header>
 
-  <!-- Main Content (views rendered by JS) -->
+  <!-- Main Content -->
   <main id="main-content">
     <div class="empty-state" style="margin-top:80px;">
       <div class="icon">⏳</div>
@@ -39,38 +37,39 @@
     </div>
   </main>
 
-  <!-- Bottom Navigation -->
+  <!-- Bottom Navigation — 5-item with FAB in center -->
   <nav id="bottom-nav">
     <button class="nav-btn active" data-view="home">
-      <span class="icon">🏠</span>
-      <span>主頁</span>
+      <span class="icon">🗂</span>
+      <span>帳本</span>
     </button>
     <button class="nav-btn" data-view="search">
       <span class="icon">🔍</span>
       <span>搜尋</span>
     </button>
-    <button class="nav-btn" data-view="settings">
-      <span class="icon">⚙️</span>
-      <span>設定</span>
-    </button>
+    <!-- FAB -->
+    <div class="nav-fab" id="nav-add-btn">
+      <div class="nav-fab-circle" style="margin:0 auto;">＋</div>
+    </div>
     <button class="nav-btn" data-view="stats">
       <span class="icon">📊</span>
       <span>統計</span>
     </button>
-    <button class="nav-btn" data-view="backup">
-      <span class="icon">💾</span>
-      <span>備份</span>
+    <button class="nav-btn" data-view="settings">
+      <span class="icon">⚙️</span>
+      <span>設定</span>
     </button>
   </nav>
 
 </div>
 
-<!-- Modal Overlay -->
+<!-- Modal Overlay (full-screen slide + sheet) -->
 <div id="modal-overlay" class="hidden">
+  <div id="modal-backdrop"></div>
   <div id="modal-content"></div>
 </div>
 
-<!-- Toast Notification -->
+<!-- Toast -->
 <div id="toast"></div>
 
 <!-- Scripts -->
