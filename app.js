@@ -432,6 +432,31 @@ class DriveService {
 // MAIN APP BELOW
 
 // ══════════════════════════════════════════════════════════════
+// UTILITY HELPERS
+// ══════════════════════════════════════════════════════════════
+const fmt = {
+  money: n => `$${Number(n || 0).toLocaleString('zh-TW')}`,
+  date: d => {
+    if (!d) return '';
+    const [y, m, day] = d.split('-');
+    return `${y}/${m}/${day}`;
+  },
+  monthLabel: (y, m) => `${y} 年 ${m} 月`,
+  today: () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+};
+
+function genId() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+}
+
+function getCatIcon(cat2) {
+  return CAT_ICONS[cat2] || CAT_ICONS['其他'];
+}
+
+// ══════════════════════════════════════════════════════════════
 // MAIN APP  V0.5
 // ══════════════════════════════════════════════════════════════
 class App {
