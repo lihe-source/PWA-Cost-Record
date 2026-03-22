@@ -1,5 +1,5 @@
 /* ─────────────────────────────────────────────────────────────
-   Cost Record PWA — app.js  V0.3
+   Cost Record PWA — app.js  V0.4
    Modules: DataStore · InvoiceService · DriveService · App
 ───────────────────────────────────────────────────────────── */
 'use strict';
@@ -124,6 +124,11 @@ class DataStore {
       (e.category2    || '').toLowerCase().includes(q) ||
       (e.invoiceNo    || '').toLowerCase().includes(q)
     ).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  }
+
+  getInvoiceItems(invoiceNo) {
+    if (!invoiceNo) return [];
+    return this.data.expenses.filter(e => e.invoiceNo === invoiceNo);
   }
 
   isInvoiceImported(invNo) {
@@ -536,11 +541,13 @@ class App {
   renderView() {
     const main = document.getElementById('main-content');
     const h1   = document.querySelector('#app-header h1');
+    main.classList.toggle('home-mode', this.view === 'home');
     switch (this.view) {
       case 'home':     main.innerHTML = this._buildHome();     h1.textContent = '記帳本'; break;
       case 'search':   main.innerHTML = this._buildSearch();   h1.textContent = '搜尋';   break;
       case 'settings': main.innerHTML = this._buildSettings(); h1.textContent = '設定';   break;
       case 'backup':   main.innerHTML = this._buildBackup();   h1.textContent = '備份';   break;
+      case 'stats':    main.innerHTML = this._buildStats();    h1.textContent = '統計';    break;
     }
     this._attachViewEvents();
   }
@@ -551,11 +558,10 @@ class App {
   _buildHome() {
     const { calendarYear: y, calendarMonth: m } = this;
     const monthlyExpenses = this.store.getByMonth(y, m);
-    const total = monthlyExpenses.reduce((s, e) => s + Number(e.amount || 0), 0);
+    const total       = monthlyExpenses.reduce((s, e) => s + Number(e.amount || 0), 0);
     const pendingCount = monthlyExpenses.filter(e => e.status === 'pending').length;
-    const datesSet = this.store.getDatesWithExpenses(y, m);
+    const datesSet    = this.store.getDatesWithExpenses(y, m);
 
-    // Category breakdown for current month
     const catMap = {};
     monthlyExpenses.forEach(e => {
       const k = e.category1 || '未分類';
@@ -566,67 +572,71 @@ class App {
     const dayExpenses = this.store.getByDate(this.selected);
     const dayTotal    = dayExpenses.reduce((s,e) => s + Number(e.amount||0), 0);
 
+    const pendingClickable = pendingCount > 0
+      ? `<span class="pending-badge" id="pending-badge">${pendingCount}</span>`
+      : `<span style="color:var(--text2)">${pendingCount}</span>`;
+
     return `
-      <!-- Month Navigator -->
-      <div class="month-nav">
-        <div class="month-nav-title">${fmt.monthLabel(y, m)}</div>
-        <div class="month-nav-btns">
-          <button class="today-btn" id="goto-today-btn">回到當日</button>
-          <button class="icon-btn" id="prev-month-btn">‹</button>
-          <button class="icon-btn" id="next-month-btn">›</button>
+      <!-- ── HOME TOP (compact, non-scroll) ── -->
+      <div class="home-top">
+
+        <!-- Month Navigator -->
+        <div class="month-nav">
+          <div class="month-nav-title">${fmt.monthLabel(y, m)}</div>
+          <div class="month-nav-btns">
+            <button class="today-btn" id="goto-today-btn">回到當日</button>
+            <button class="icon-btn" id="prev-month-btn">‹</button>
+            <button class="icon-btn" id="next-month-btn">›</button>
+          </div>
         </div>
-      </div>
 
-      <!-- Calendar -->
-      <div class="calendar-wrap">
-        ${this._buildCalendar(y, m, datesSet)}
-      </div>
+        <!-- Compact Calendar -->
+        <div class="calendar-wrap">
+          ${this._buildCalendar(y, m, datesSet)}
+        </div>
 
-      <!-- Monthly Summary -->
-      <div class="month-summary">
-        <div class="month-summary-title">📊 ${y}/${String(m).padStart(2,'0')} 消費總覽</div>
-        <div class="month-stats">
-          <div class="stat-item">
-            <div class="stat-label">總支出</div>
-            <div class="stat-value big">${fmt.money(total)}</div>
-          </div>
-          <div class="stat-item">
-            <div class="stat-label">筆數</div>
-            <div class="stat-value">${monthlyExpenses.length}</div>
-          </div>
-          <div class="stat-item">
-            <div class="stat-label">待分類</div>
-            <div class="stat-value" style="color:${pendingCount>0?'#f87171':'var(--text2)'}">
-              ${pendingCount}
+        <!-- Monthly Summary (compact) -->
+        <div class="month-summary">
+          <div class="month-stats">
+            <div class="stat-item">
+              <div class="stat-label">總支出</div>
+              <div class="stat-value big">${fmt.money(total)}</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">筆數</div>
+              <div class="stat-value">${monthlyExpenses.length}</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">待分類 <span style="font-size:9px;color:var(--amber);">(點擊)</span></div>
+              <div class="stat-value">${pendingClickable}</div>
             </div>
           </div>
-        </div>
-        ${catEntries.length ? `
-          <div class="divider" style="margin-top:12px;margin-bottom:10px;"></div>
-          <div class="cat-breakdown">
-            ${catEntries.map(([name, amt]) => `
-              <div class="cat-row">
-                <div class="cat-row-name">${name}</div>
-                <div class="cat-row-bar-wrap">
-                  <div class="cat-row-bar" style="width:${Math.round((amt/total)*100)}%"></div>
+          ${catEntries.length ? `
+            <div class="cat-breakdown" style="margin-top:8px;">
+              ${catEntries.map(([name, amt]) => `
+                <div class="cat-row">
+                  <div class="cat-row-name">${name}</div>
+                  <div class="cat-row-bar-wrap">
+                    <div class="cat-row-bar" style="width:${Math.round((amt/total)*100)}%"></div>
+                  </div>
+                  <div class="cat-row-amount">${fmt.money(amt)}</div>
                 </div>
-                <div class="cat-row-amount">${fmt.money(amt)}</div>
-              </div>
-            `).join('')}
-          </div>
-        ` : ''}
+              `).join('')}
+            </div>
+          ` : ''}
+        </div>
       </div>
 
-      <!-- Day Panel -->
-      <div class="day-panel">
+      <!-- ── HOME BOTTOM (independently scrollable) ── -->
+      <div class="home-bottom">
         <div class="day-panel-header">
           <div class="day-panel-title">
             ${fmt.date(this.selected)}
-            ${dayTotal > 0 ? `<span style="color:var(--amber);font-family:var(--font-mono);font-size:13px;margin-left:8px;">${fmt.money(dayTotal)}</span>` : ''}
+            ${dayTotal > 0 ? `<span class="day-total-amt">${fmt.money(dayTotal)}</span>` : ''}
           </div>
-          <div style="display:flex;gap:8px;">
+          <div style="display:flex;gap:6px;align-items:center;">
             <button class="invoice-fetch-btn" id="invoice-fetch-btn">
-              <span class="icon">🧾</span>發票匯入
+              <span class="icon">🧾</span>發票
             </button>
             <button class="add-btn" id="add-expense-btn">
               <span class="icon">＋</span>記帳
@@ -903,6 +913,244 @@ class App {
   }
 
   // ─────────────────────────────────────────────────────────
+  // PENDING BATCH CATEGORIZATION MODAL
+  // ─────────────────────────────────────────────────────────
+  _openPendingModal() {
+    const { calendarYear: y, calendarMonth: m } = this;
+    const pending = this.store.getByMonth(y, m)
+      .filter(e => e.status === 'pending')
+      .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+    if (!pending.length) { this.toast('本月沒有待分類項目', 'info'); return; }
+
+    const cats = this.store.data.categories;
+    const catOptions = cats.map(c =>
+      `<option value="${c.name}">${c.name}</option>`
+    ).join('');
+
+    const rows = pending.map(e => `
+      <div class="pending-row" data-pid="${e.id}">
+        <div class="pending-row-top">
+          <div class="pending-desc">${e.description || '(未命名)'}</div>
+          <div class="pending-amt">${fmt.money(e.amount)}</div>
+        </div>
+        <div class="pending-row-meta">
+          <span class="pending-date">${fmt.date(e.date)}</span>
+          ${e.store ? `<span class="pending-store">🏪 ${e.store}</span>` : ''}
+        </div>
+        <div class="pending-row-selects">
+          <select class="form-select form-select-sm pending-cat1" data-pid="${e.id}">
+            <option value="">大分類</option>
+            ${catOptions}
+          </select>
+          <select class="form-select form-select-sm pending-cat2" data-pid="${e.id}" disabled>
+            <option value="">小分類</option>
+          </select>
+        </div>
+      </div>`).join('');
+
+    document.getElementById('modal-content').innerHTML = `
+      <div class="modal-handle"></div>
+      <div class="modal-header">
+        <div class="modal-title">待分類 (${pending.length} 筆)</div>
+        <button class="modal-close" id="modal-close-btn">✕</button>
+      </div>
+      <div class="modal-body modal-body-scroll" style="padding:0;">
+        <div style="padding:10px 16px 4px;font-size:11px;color:var(--text3);">
+          為每筆選擇分類後，點「儲存所有分類」一次完成
+        </div>
+        <div id="pending-list" style="padding:0 16px 16px;display:flex;flex-direction:column;gap:10px;">
+          ${rows}
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="modal-cancel-btn">取消</button>
+        <button class="btn-primary" id="pending-save-all-btn">儲存所有分類</button>
+      </div>`;
+
+    document.getElementById('modal-overlay').classList.remove('hidden');
+    document.getElementById('modal-close-btn')?.addEventListener('click', () => this.closeModal());
+    document.getElementById('modal-cancel-btn')?.addEventListener('click', () => this.closeModal());
+
+    // Cat1 → populate cat2 for each row
+    document.querySelectorAll('.pending-cat1').forEach(sel => {
+      sel.addEventListener('change', () => {
+        const pid  = sel.dataset.pid;
+        const cat1 = sel.value;
+        const sel2 = document.querySelector(`.pending-cat2[data-pid="${pid}"]`);
+        const subs = cats.find(c => c.name === cat1)?.subs || [];
+        sel2.innerHTML = '<option value="">小分類</option>' +
+          subs.map(s => `<option value="${s}">${s}</option>`).join('');
+        sel2.disabled = !subs.length;
+      });
+    });
+
+    // Save all
+    document.getElementById('pending-save-all-btn')?.addEventListener('click', () => {
+      let saved = 0;
+      document.querySelectorAll('.pending-row[data-pid]').forEach(row => {
+        const pid  = row.dataset.pid;
+        const cat1 = row.querySelector(`.pending-cat1[data-pid="${pid}"]`)?.value || '';
+        const cat2 = row.querySelector(`.pending-cat2[data-pid="${pid}"]`)?.value || '';
+        if (!cat1) return;
+        this.store.updateExpense(pid, {
+          category1: cat1, category2: cat2,
+          status: 'categorized'
+        });
+        saved++;
+      });
+      this.closeModal();
+      this.toast(`已更新 ${saved} 筆分類`, 'success');
+      this.renderView();
+    });
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // STATS VIEW — Pie chart + category ranking
+  // ─────────────────────────────────────────────────────────
+  _buildStats() {
+    return `<div class="stats-wrap" id="stats-wrap">
+      <div class="stats-period-row">
+        <button class="stats-period-btn active" data-period="month">本月</button>
+        <button class="stats-period-btn" data-period="3month">近3月</button>
+        <button class="stats-period-btn" data-period="6month">近6月</button>
+        <button class="stats-period-btn" data-period="all">全部</button>
+      </div>
+      <div id="stats-content"></div>
+    </div>`;
+  }
+
+  _renderStats(period) {
+    const now   = new Date();
+    let expenses;
+
+    if (period === 'month') {
+      expenses = this.store.getByMonth(now.getFullYear(), now.getMonth() + 1);
+    } else if (period === '3month') {
+      const cutoff = new Date(now); cutoff.setMonth(cutoff.getMonth() - 3);
+      expenses = this.store.data.expenses.filter(e => e.date >= cutoff.toISOString().slice(0,10));
+    } else if (period === '6month') {
+      const cutoff = new Date(now); cutoff.setMonth(cutoff.getMonth() - 6);
+      expenses = this.store.data.expenses.filter(e => e.date >= cutoff.toISOString().slice(0,10));
+    } else {
+      expenses = [...this.store.data.expenses];
+    }
+
+    const total = expenses.reduce((s, e) => s + Number(e.amount || 0), 0);
+
+    // Build category map (cat1 level)
+    const catMap = {};
+    expenses.forEach(e => {
+      const k = e.category1 || '未分類';
+      catMap[k] = (catMap[k] || 0) + Number(e.amount || 0);
+    });
+
+    // Sub-category map
+    const subMap = {};
+    expenses.forEach(e => {
+      const k1 = e.category1 || '未分類';
+      const k2 = e.category2 || '';
+      const key = k1 + '||' + (k2 || '(未選小分類)');
+      subMap[key] = (subMap[key] || 0) + Number(e.amount || 0);
+    });
+
+    const catEntries = Object.entries(catMap).sort((a,b) => b[1]-a[1]);
+    const COLORS = ['#f59e0b','#3b82f6','#22c55e','#ef4444','#a855f7','#f97316','#06b6d4','#84cc16'];
+
+    const catItemsHtml = catEntries.map(([name, amt], i) => {
+      const pct  = total > 0 ? ((amt / total) * 100).toFixed(1) : 0;
+      const color = COLORS[i % COLORS.length];
+      // Sub-items for this cat
+      const subs = Object.entries(subMap)
+        .filter(([k]) => k.startsWith(name + '||'))
+        .sort((a,b) => b[1]-a[1]);
+      return `
+        <div class="stats-cat-item">
+          <div class="stats-cat-header">
+            <span class="stats-cat-dot" style="background:${color}"></span>
+            <span class="stats-cat-name">${name}</span>
+            <div style="flex:1;margin:0 10px;height:6px;background:var(--bg3);border-radius:3px;overflow:hidden;">
+              <div style="height:100%;width:${pct}%;background:${color};border-radius:3px;transition:width .5s;"></div>
+            </div>
+            <span class="stats-cat-pct">${pct}%</span>
+            <span class="stats-cat-amt">${fmt.money(amt)}</span>
+          </div>
+          ${subs.length > 1 ? `
+            <div class="stats-sub-list">
+              ${subs.map(([k, sa]) => {
+                const subName = k.split('||')[1];
+                const sp = total > 0 ? ((sa/total)*100).toFixed(1) : 0;
+                return `<div class="stats-sub-item">
+                  <span class="stats-sub-name">${subName}</span>
+                  <span class="stats-sub-amt">${fmt.money(sa)}</span>
+                  <span class="stats-sub-pct">${sp}%</span>
+                </div>`;
+              }).join('')}
+            </div>` : ''}
+        </div>`;
+    }).join('');
+
+    const el = document.getElementById('stats-content');
+    if (!el) return;
+
+    el.innerHTML = `
+      <div class="stats-total-card">
+        <div class="stats-total-label">總支出</div>
+        <div class="stats-total-amt">${fmt.money(total)}</div>
+        <div class="stats-total-sub">${expenses.length} 筆記錄</div>
+      </div>
+
+      <canvas id="stats-pie" width="220" height="220" style="display:block;margin:0 auto 8px;"></canvas>
+
+      <div class="stats-legend">
+        ${catEntries.map(([name, amt], i) => `
+          <div class="stats-legend-item">
+            <span class="stats-cat-dot" style="background:${COLORS[i%COLORS.length]}"></span>
+            <span>${name}</span>
+          </div>`).join('')}
+      </div>
+
+      <div class="stats-cat-list">
+        ${catItemsHtml || '<div class="empty-state"><div class="icon">📊</div><p>尚無資料</p></div>'}
+      </div>`;
+
+    // Draw pie chart
+    requestAnimationFrame(() => {
+      const canvas = document.getElementById('stats-pie');
+      if (!canvas || !catEntries.length) return;
+      const ctx = canvas.getContext('2d');
+      const cx = 110, cy = 110, r = 85, inner = 48;
+      let angle = -Math.PI / 2;
+
+      catEntries.forEach(([, amt], i) => {
+        const slice = total > 0 ? (amt / total) * Math.PI * 2 : 0;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, r, angle, angle + slice);
+        ctx.closePath();
+        ctx.fillStyle = COLORS[i % COLORS.length];
+        ctx.fill();
+        ctx.strokeStyle = '#1e293b';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        angle += slice;
+      });
+
+      // Donut hole
+      ctx.beginPath();
+      ctx.arc(cx, cy, inner, 0, Math.PI * 2);
+      ctx.fillStyle = '#1e293b';
+      ctx.fill();
+
+      // Center text
+      ctx.fillStyle = '#f1f5f9';
+      ctx.font = 'bold 13px DM Mono, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(fmt.money(total), cx, cy + 5);
+    });
+  }
+
+  // ─────────────────────────────────────────────────────────
   // BACKUP VIEW
   // ─────────────────────────────────────────────────────────
   _buildBackup() {
@@ -955,6 +1203,7 @@ class App {
       case 'search':   this._attachSearchEvents();   break;
       case 'settings': this._attachSettingsEvents(); break;
       case 'backup':   this._attachBackupEvents();   break;
+      case 'stats':    this._attachStatsEvents();    break;
     }
   }
 
@@ -993,6 +1242,11 @@ class App {
     // Expense card click
     document.querySelectorAll('.expense-card[data-id]').forEach(el => {
       el.addEventListener('click', () => this.openExpenseModal(el.dataset.id));
+    });
+
+    // Pending badge click → batch categorize modal
+    document.getElementById('pending-badge')?.addEventListener('click', () => {
+      this._openPendingModal();
     });
   }
 
@@ -1108,6 +1362,17 @@ class App {
     if (name && name.trim()) callback(name.trim());
   }
 
+  _attachStatsEvents() {
+    this._renderStats('month');
+    document.querySelectorAll('.stats-period-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.stats-period-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        this._renderStats(btn.dataset.period);
+      });
+    });
+  }
+
   _attachBackupEvents() {
     document.getElementById('export-local-btn')?.addEventListener('click', () => this.exportLocal());
     document.getElementById('import-local-btn')?.addEventListener('click', () => {
@@ -1154,50 +1419,68 @@ class App {
           .map(s => `<option value="${s}" ${e.category2===s?'selected':''}>${s}</option>`).join('')
       : '';
 
+    // Build invoice sibling items list
+    const invItems = (isEdit && e.invoiceNo)
+      ? this.store.getInvoiceItems(e.invoiceNo) : [];
+    const invItemsHtml = invItems.length > 1 ? `
+      <div class="form-group">
+        <label class="form-label">同張發票品項 (${e.invoiceNo})</label>
+        <div class="inv-items-list">
+          ${invItems.map(it => `
+            <div class="inv-item-row ${it.id === e.id ? 'inv-item-current' : ''}" data-inv-id="${it.id}">
+              <span class="inv-item-name">${it.description || '(未命名)'}</span>
+              <span class="inv-item-amt">${fmt.money(it.amount)}</span>
+              ${it.id !== e.id ? `<span class="inv-item-cat ${it.status==='pending'?'pending':''}">${it.status==='pending'?'待分類':(it.category1?it.category1+(it.category2?'·'+it.category2:''):'')}</span>` : '<span class="inv-item-current-badge">本筆</span>'}
+            </div>`).join('')}
+        </div>
+      </div>` : '';
+
     document.getElementById('modal-content').innerHTML = `
       <div class="modal-handle"></div>
       <div class="modal-header">
         <div class="modal-title">${isEdit ? '編輯消費' : '新增消費'}</div>
         <button class="modal-close" id="modal-close-btn">✕</button>
       </div>
-      <div class="modal-body">
-        <div class="form-group">
-          <label class="form-label">日期</label>
-          <input class="form-input" type="date" id="f-date" value="${e.date || this.selected}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">金額</label>
-          <div class="form-amount-wrap">
-            <span class="form-amount-prefix">$</span>
-            <input class="form-input amount-input" type="number" id="f-amount" placeholder="0"
-              value="${e.amount || ''}" inputmode="decimal" min="0">
+      <div class="modal-body modal-body-scroll">
+        <div class="form-row-2">
+          <div class="form-group">
+            <label class="form-label">日期</label>
+            <input class="form-input form-input-sm" type="date" id="f-date" value="${e.date || this.selected}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">金額</label>
+            <div class="form-amount-wrap">
+              <span class="form-amount-prefix">$</span>
+              <input class="form-input form-input-sm amount-input" type="number" id="f-amount" placeholder="0"
+                value="${e.amount || ''}" inputmode="decimal" min="0">
+            </div>
           </div>
         </div>
         <div class="form-group">
-          <label class="form-label">消費項目</label>
-          <input class="form-input" id="f-desc" placeholder="請輸入消費項目" value="${e.description || ''}">
-        </div>
-        <div class="form-group">
           <label class="form-label">消費店家</label>
-          <input class="form-input" id="f-store" placeholder="例如：7-11、全聯" value="${e.store || ''}">
+          <input class="form-input form-input-sm" id="f-store" placeholder="例如：7-11、全聯" value="${e.store || ''}">
         </div>
-        <div class="form-row">
+        <div class="form-row-2">
           <div class="form-group">
             <label class="form-label">大分類</label>
-            <select class="form-select" id="f-cat1">
+            <select class="form-select form-select-sm" id="f-cat1">
               <option value="">-- 選擇 --</option>
               ${cat1Options}
             </select>
           </div>
           <div class="form-group">
             <label class="form-label">小分類</label>
-            <select class="form-select" id="f-cat2">
+            <select class="form-select form-select-sm" id="f-cat2">
               <option value="">-- 選擇 --</option>
               ${cat2Options}
             </select>
           </div>
         </div>
-        ${isEdit && e.invoiceNo ? `<div style="font-size:11px;color:var(--text3);">🧾 發票號碼：${e.invoiceNo}</div>` : ''}
+        <div class="form-group">
+          <label class="form-label">消費項目</label>
+          <input class="form-input form-input-sm" id="f-desc" placeholder="請輸入消費項目" value="${e.description || ''}">
+        </div>
+        ${invItemsHtml}
       </div>
       <div class="modal-footer">
         ${isEdit ? `<button class="btn-danger" id="modal-delete-btn">刪除</button>` : ''}
@@ -1206,6 +1489,16 @@ class App {
       </div>`;
 
     document.getElementById('modal-overlay').classList.remove('hidden');
+
+    // Invoice item row click → switch to that expense
+    document.querySelectorAll('.inv-item-row[data-inv-id]').forEach(row => {
+      if (row.classList.contains('inv-item-current')) return;
+      row.style.cursor = 'pointer';
+      row.addEventListener('click', () => {
+        this.closeModal();
+        this.openExpenseModal(row.dataset.invId);
+      });
+    });
 
     // Category cascade
     document.getElementById('f-cat1')?.addEventListener('change', e2 => {
