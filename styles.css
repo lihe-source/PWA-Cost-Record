@@ -1,5 +1,5 @@
 /* ─────────────────────────────────────────────────────────────
-   Cost Record PWA — styles.css  V0.1
+   Cost Record PWA — styles.css  V0.3
    Design: Deep Navy × Warm Amber — mobile-first financial app
 ───────────────────────────────────────────────────────────── */
 
@@ -50,19 +50,24 @@ body {
 #app {
   display: flex;
   flex-direction: column;
+  /* Use 100dvh minus top safe area so content fits perfectly */
   height: 100dvh;
   max-width: 480px;
   margin: 0 auto;
   position: relative;
+  background: var(--bg);
 }
 
 /* ── Header ── */
 #app-header {
-  height: var(--header-h);
+  /* Height = nav bar + iOS status bar safe area */
+  min-height: calc(var(--header-h) + env(safe-area-inset-top));
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
-  padding: 0 18px;
+  padding: 0 18px env(safe-area-inset-bottom, 0px);
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: 12px;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
@@ -116,12 +121,13 @@ body {
 
 /* ── Bottom Navigation ── */
 #bottom-nav {
-  height: var(--nav-h);
+  /* Base height + iOS home indicator safe area */
+  min-height: var(--nav-h);
+  padding-bottom: env(safe-area-inset-bottom);
   display: flex;
   background: var(--bg2);
   border-top: 1px solid var(--border);
   flex-shrink: 0;
-  padding-bottom: env(safe-area-inset-bottom);
 }
 .nav-btn {
   flex: 1;
@@ -360,7 +366,7 @@ body {
 
 /* Day Panel */
 .day-panel {
-  padding: 0 12px 80px;
+  padding: 0 12px calc(80px + env(safe-area-inset-bottom));
 }
 .day-panel-header {
   display: flex;
@@ -478,7 +484,7 @@ body {
    SEARCH VIEW
 ───────────────────────────────────────── */
 .search-wrap {
-  padding: 16px 12px 80px;
+  padding: 16px 12px calc(80px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -519,7 +525,7 @@ body {
    SETTINGS VIEW
 ───────────────────────────────────────── */
 .settings-wrap {
-  padding: 16px 12px 80px;
+  padding: 16px 12px calc(80px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -695,7 +701,7 @@ body {
    BACKUP VIEW
 ───────────────────────────────────────── */
 .backup-wrap {
-  padding: 16px 12px 80px;
+  padding: 16px 12px calc(80px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -909,7 +915,7 @@ body {
 /* Toast */
 #toast {
   position: fixed;
-  bottom: calc(var(--nav-h) + 12px);
+  bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 12px);
   left: 50%;
   transform: translateX(-50%) translateY(20px);
   background: var(--card);
@@ -1012,4 +1018,162 @@ body {
     border-right: 1px solid var(--border);
     box-shadow: 0 0 40px rgba(0,0,0,0.5);
   }
+}
+
+/* ─────────────────────────────────────────
+   INVOICE IMPORT — Choice & CSV Preview
+───────────────────────────────────────── */
+
+/* Import choice cards */
+.import-choice-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--bg3);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: border-color .2s, background .2s;
+}
+.import-choice-card:hover {
+  border-color: var(--amber);
+  background: var(--amber-dim);
+}
+.import-choice-icon {
+  font-size: 26px;
+  flex-shrink: 0;
+  width: 36px;
+  text-align: center;
+}
+.import-choice-info {
+  flex: 1;
+}
+.import-choice-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 3px;
+}
+.import-choice-sub {
+  font-size: 11px;
+  color: var(--text3);
+  line-height: 1.5;
+}
+.import-choice-arrow {
+  font-size: 18px;
+  color: var(--text3);
+}
+
+/* CSV preview summary bar */
+.csv-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  background: var(--bg3);
+  border-radius: var(--radius);
+  padding: 12px;
+  margin-bottom: 12px;
+  text-align: center;
+}
+.csv-summary-num {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1;
+}
+.csv-summary-label {
+  font-size: 10px;
+  color: var(--text3);
+  margin-top: 4px;
+}
+
+/* CSV skip note */
+.csv-skip-note {
+  font-size: 11px;
+  color: var(--amber);
+  background: var(--amber-dim);
+  border-radius: 8px;
+  padding: 7px 12px;
+  margin-bottom: 10px;
+}
+
+/* Invoice groups in preview */
+.csv-invoice-group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+  overflow: hidden;
+  transition: opacity .2s;
+}
+.csv-invoice-group.already-imported {
+  opacity: 0.45;
+}
+.csv-inv-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  background: var(--bg3);
+}
+.csv-inv-no {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--blue);
+  flex-shrink: 0;
+}
+.csv-inv-store {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.csv-inv-total {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--amber);
+  flex-shrink: 0;
+}
+.csv-inv-dup {
+  font-size: 10px;
+  background: var(--bg2);
+  color: var(--text3);
+  border-radius: 10px;
+  padding: 2px 7px;
+  flex-shrink: 0;
+}
+.csv-inv-date {
+  font-size: 10px;
+  color: var(--text3);
+  padding: 3px 12px 0;
+  font-family: var(--font-mono);
+}
+.csv-inv-items {
+  padding: 6px 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.csv-inv-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.csv-inv-item-name {
+  font-size: 12px;
+  color: var(--text2);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.csv-inv-item-amt {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text);
+  flex-shrink: 0;
 }

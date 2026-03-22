@@ -1,5 +1,5 @@
 /* ─────────────────────────────────────────────────────────────
-   Cost Record PWA — app.js  V0.1
+   Cost Record PWA — app.js  V0.3
    Modules: DataStore · InvoiceService · DriveService · App
 ───────────────────────────────────────────────────────────── */
 'use strict';
@@ -224,6 +224,104 @@ class InvoiceService {
 }
 
 // ══════════════════════════════════════════════════════════════
+// CSV INVOICE PARSER — 財政部電子發票 CSV 格式
+// ══════════════════════════════════════════════════════════════
+class CsvInvoiceParser {
+
+  // Parse raw CSV text → array of row objects
+  parse(text) {
+    // Normalize line endings
+    const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+
+    const HEADER_COLS = [
+      '載具自訂名稱','發票日期','發票號碼','發票金額','發票狀態',
+      '折讓','賣方統一編號','賣方名稱','賣方地址','買方統編',
+      '消費明細_數量','消費明細_單價','消費明細_金額','消費明細_品名'
+    ];
+
+    const rows = [];
+    let headerFound = false;
+    let colMap = {};
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line) continue;
+
+      // Skip footer notes
+      if (line.startsWith('捐贈或作廢') || line.startsWith('注意')) continue;
+
+      const cols = this._splitCsv(line);
+
+      // Detect header row
+      if (!headerFound) {
+        if (cols.some(c => c.includes('發票日期') || c.includes('發票號碼'))) {
+          headerFound = true;
+          cols.forEach((c, i) => { colMap[c.trim()] = i; });
+          continue;
+        }
+        // Try positional fallback (no header row in file)
+        if (cols.length >= 14 && /^\d{8}$/.test(cols[1])) {
+          headerFound = true;
+          HEADER_COLS.forEach((h, i) => { colMap[h] = i; });
+        } else {
+          continue;
+        }
+      }
+
+      if (cols.length < 4) continue;
+
+      const get = key => (cols[colMap[key]] || '').trim();
+
+      const amount = parseFloat(get('消費明細_金額') || get('發票金額') || '0');
+      const rawDate = get('發票日期');
+
+      // Skip zero/negative item amounts (折扣行)
+      if (amount <= 0) continue;
+      // Skip invalid dates
+      if (!/^\d{8}$/.test(rawDate)) continue;
+
+      rows.push({
+        date:      `${rawDate.slice(0,4)}-${rawDate.slice(4,6)}-${rawDate.slice(6,8)}`,
+        invoiceNo: get('發票號碼'),
+        amount,
+        description: get('消費明細_品名') || get('賣方名稱') || '(未命名)',
+        store:     get('賣方名稱'),
+        status:    get('發票狀態'),
+        carrier:   get('載具自訂名稱')
+      });
+    }
+
+    return rows;
+  }
+
+  // Group parsed rows by invoice number for preview display
+  groupByInvoice(rows) {
+    const map = new Map();
+    for (const r of rows) {
+      if (!map.has(r.invoiceNo)) {
+        map.set(r.invoiceNo, { invoiceNo: r.invoiceNo, date: r.date, store: r.store, items: [] });
+      }
+      map.get(r.invoiceNo).items.push(r);
+    }
+    return [...map.values()];
+  }
+
+  // Minimal CSV split that handles quoted fields
+  _splitCsv(line) {
+    const result = [];
+    let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') { inQ = !inQ; continue; }
+      if (ch === ',' && !inQ) { result.push(cur); cur = ''; continue; }
+      cur += ch;
+    }
+    result.push(cur);
+    return result;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
 // GOOGLE DRIVE SERVICE
 // ══════════════════════════════════════════════════════════════
 class DriveService {
@@ -359,6 +457,7 @@ class App {
   constructor() {
     this.store   = new DataStore();
     this.invoice = new InvoiceService();
+    this.csvParser = new CsvInvoiceParser();
     this.drive   = new DriveService();
     this.view    = 'home';
     this.today   = fmt.today();
@@ -384,10 +483,17 @@ class App {
       this.drive.init(googleClientId).catch(()=>{});
     }
 
+    // Create hidden CSV file input
+    const csvInput = document.createElement('input');
+    csvInput.type = 'file'; csvInput.id = 'csv-invoice-input';
+    csvInput.accept = '.csv'; csvInput.style.display = 'none';
+    document.body.appendChild(csvInput);
+    csvInput.addEventListener('change', e => this._handleCsvFile(e));
+
     // Bind add button (delegated)
     document.addEventListener('click', e => {
       if (e.target.closest('#add-expense-btn')) this.openExpenseModal(null);
-      if (e.target.closest('#invoice-fetch-btn')) this.fetchInvoices();
+      if (e.target.closest('#invoice-fetch-btn')) this.openInvoiceImportModal();
     });
   }
 
@@ -1173,12 +1279,202 @@ class App {
   }
 
   // ─────────────────────────────────────────────────────────
-  // INVOICE FETCH
+  // INVOICE IMPORT — Choice Modal
   // ─────────────────────────────────────────────────────────
-  async fetchInvoices() {
-    const btn = document.getElementById('invoice-fetch-btn');
-    if (btn) btn.innerHTML = '<span class="spinner"></span> 查詢中...';
+  openInvoiceImportModal() {
+    document.getElementById('modal-content').innerHTML = `
+      <div class="modal-handle"></div>
+      <div class="modal-header">
+        <div class="modal-title">🧾 發票匯入</div>
+        <button class="modal-close" id="modal-close-btn">✕</button>
+      </div>
+      <div class="modal-body" style="gap:10px;">
+        <p style="font-size:13px;color:var(--text2);line-height:1.7;">
+          請選擇匯入方式。<br>
+          若尚未申請財政部 API，可使用「匯入 CSV 檔」方式。
+        </p>
 
+        <!-- CSV import card -->
+        <div class="import-choice-card" id="choice-csv">
+          <div class="import-choice-icon">📂</div>
+          <div class="import-choice-info">
+            <div class="import-choice-title">匯入 CSV 檔案</div>
+            <div class="import-choice-sub">從財政部電子發票平台下載的 CSV 檔案匯入（免申請 API）</div>
+          </div>
+          <div class="import-choice-arrow">›</div>
+        </div>
+
+        <!-- API fetch card -->
+        <div class="import-choice-card" id="choice-api">
+          <div class="import-choice-icon">☁️</div>
+          <div class="import-choice-info">
+            <div class="import-choice-title">財政部 API 自動查詢</div>
+            <div class="import-choice-sub">需先在設定填寫 AppID / API Key（可查近 90 天）</div>
+          </div>
+          <div class="import-choice-arrow">›</div>
+        </div>
+
+        <div style="background:var(--bg3);border-radius:10px;padding:12px 14px;">
+          <div style="font-size:11px;color:var(--text3);line-height:1.8;">
+            📋 <strong style="color:var(--text2);">如何下載 CSV？</strong><br>
+            1. 登入 <a href="https://www.einvoice.nat.gov.tw" target="_blank" style="color:var(--amber);">財政部電子發票平台</a><br>
+            2. 左側「雲端發票」→「消費明細下載」<br>
+            3. 選擇月份 → 下載 CSV 格式
+          </div>
+        </div>
+      </div>`;
+
+    document.getElementById('modal-overlay').classList.remove('hidden');
+
+    document.getElementById('modal-close-btn')?.addEventListener('click', () => this.closeModal());
+    document.getElementById('modal-overlay')?.addEventListener('click', e2 => {
+      if (e2.target === document.getElementById('modal-overlay')) this.closeModal();
+    });
+
+    document.getElementById('choice-csv')?.addEventListener('click', () => {
+      this.closeModal();
+      document.getElementById('csv-invoice-input')?.click();
+    });
+
+    document.getElementById('choice-api')?.addEventListener('click', () => {
+      this.closeModal();
+      this._fetchInvoicesApi();
+    });
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // CSV INVOICE IMPORT
+  // ─────────────────────────────────────────────────────────
+  _handleCsvFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const rows = this.csvParser.parse(e.target.result);
+        if (!rows.length) { this.toast('CSV 中沒有找到有效的發票資料', 'error'); return; }
+        this._showCsvPreviewModal(rows);
+      } catch (err) {
+        this.toast('CSV 解析失敗：' + err.message, 'error');
+      }
+    };
+    reader.readAsText(file, 'utf-8');
+    event.target.value = '';
+  }
+
+  _showCsvPreviewModal(rows) {
+    const groups   = this.csvParser.groupByInvoice(rows);
+    const newRows  = rows.filter(r => !this.store.isInvoiceImported(r.invoiceNo + '_' + r.description));
+    const skipCount = rows.length - newRows.length;
+
+    const invoiceHTML = groups.slice(0, 20).map(g => {
+      const invTotal = g.items.reduce((s, r) => s + r.amount, 0);
+      const alreadyImported = g.items.every(r =>
+        this.store.isInvoiceImported(r.invoiceNo + '_' + r.description)
+      );
+      return `
+        <div class="csv-invoice-group ${alreadyImported ? 'already-imported' : ''}">
+          <div class="csv-inv-header">
+            <span class="csv-inv-no">${g.invoiceNo}</span>
+            <span class="csv-inv-store">${g.store}</span>
+            <span class="csv-inv-total">$${invTotal.toLocaleString()}</span>
+            ${alreadyImported ? '<span class="csv-inv-dup">已匯入</span>' : ''}
+          </div>
+          <div class="csv-inv-date">${g.date}</div>
+          <div class="csv-inv-items">
+            ${g.items.map(r => `
+              <div class="csv-inv-item">
+                <span class="csv-inv-item-name">${r.description}</span>
+                <span class="csv-inv-item-amt">$${r.amount.toLocaleString()}</span>
+              </div>`).join('')}
+          </div>
+        </div>`;
+    }).join('');
+
+    document.getElementById('modal-content').innerHTML = `
+      <div class="modal-handle"></div>
+      <div class="modal-header">
+        <div class="modal-title">📋 發票明細預覽</div>
+        <button class="modal-close" id="modal-close-btn">✕</button>
+      </div>
+      <div class="modal-body" style="padding-bottom:0;">
+        <div class="csv-summary">
+          <div class="csv-summary-item">
+            <div class="csv-summary-num">${rows.length}</div>
+            <div class="csv-summary-label">總品項</div>
+          </div>
+          <div class="csv-summary-item">
+            <div class="csv-summary-num">${groups.length}</div>
+            <div class="csv-summary-label">張發票</div>
+          </div>
+          <div class="csv-summary-item">
+            <div class="csv-summary-num" style="color:var(--amber);">$${rows.reduce((s,r)=>s+r.amount,0).toLocaleString()}</div>
+            <div class="csv-summary-label">總金額</div>
+          </div>
+          <div class="csv-summary-item">
+            <div class="csv-summary-num" style="color:${newRows.length>0?'var(--green)':'var(--text3)'};">${newRows.length}</div>
+            <div class="csv-summary-label">待匯入</div>
+          </div>
+        </div>
+        ${skipCount > 0 ? `<div class="csv-skip-note">⚠️ ${skipCount} 筆已匯入過，將自動略過</div>` : ''}
+        <div style="max-height:340px;overflow-y:auto;margin:0 -18px;padding:0 18px 16px;">
+          ${invoiceHTML}
+          ${groups.length > 20 ? `<div style="text-align:center;font-size:12px;color:var(--text3);padding:8px;">...還有 ${groups.length-20} 張發票</div>` : ''}
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="modal-cancel-btn">取消</button>
+        <button class="btn-primary" id="csv-confirm-btn" ${newRows.length===0?'disabled style="opacity:.5;"':''}>
+          匯入 ${newRows.length} 筆
+        </button>
+      </div>`;
+
+    document.getElementById('modal-overlay').classList.remove('hidden');
+    document.getElementById('modal-close-btn')?.addEventListener('click', () => this.closeModal());
+    document.getElementById('modal-cancel-btn')?.addEventListener('click', () => this.closeModal());
+
+    document.getElementById('csv-confirm-btn')?.addEventListener('click', () => {
+      if (newRows.length === 0) return;
+      this._importCsvRows(newRows);
+    });
+  }
+
+  _importCsvRows(rows) {
+    let imported = 0;
+    for (const r of rows) {
+      const key = r.invoiceNo + '_' + r.description;
+      if (this.store.isInvoiceImported(key)) continue;
+      this.store.addExpense({
+        date:        r.date,
+        amount:      r.amount,
+        description: r.description,
+        store:       r.store,
+        category1:   '',
+        category2:   '',
+        status:      'pending',
+        source:      'invoice',
+        invoiceNo:   r.invoiceNo
+      });
+      this.store.markInvoiceImported(key);
+      imported++;
+    }
+    this.closeModal();
+    this.toast(`✅ 已匯入 ${imported} 筆發票明細`, 'success');
+    // Jump calendar to the month of first imported item
+    if (rows.length > 0 && rows[0].date) {
+      const d = new Date(rows[0].date);
+      this.calendarYear  = d.getFullYear();
+      this.calendarMonth = d.getMonth() + 1;
+      this.selected      = rows[0].date;
+    }
+    this.renderView();
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // INVOICE FETCH via API (original flow)
+  // ─────────────────────────────────────────────────────────
+  async _fetchInvoicesApi() {
+    this.toast('連線財政部 API...', 'info');
     try {
       const end   = new Date();
       const start = new Date(end); start.setDate(start.getDate() - 90);
@@ -1197,9 +1493,9 @@ class App {
         const invNo = inv.invNum || inv.invoiceNumber || '';
         if (!invNo || this.store.isInvoiceImported(invNo)) continue;
 
-        const rawDate  = inv.invDate || inv.invoiceDate || '';
-        const dateStr  = this.invoice.parseInvoiceDate(rawDate.replace(/\//g,''));
-        const amount   = Number(inv.amount || inv.invAmount || 0);
+        const rawDate = inv.invDate || inv.invoiceDate || '';
+        const dateStr = this.invoice.parseInvoiceDate(rawDate.replace(/\//g,''));
+        const amount  = Number(inv.amount || inv.invAmount || 0);
 
         this.store.addExpense({
           date:        dateStr || fmt.today(),
@@ -1220,8 +1516,6 @@ class App {
       if (imported > 0) this.renderView();
     } catch (err) {
       this.toast(`發票查詢失敗：${err.message}`, 'error');
-    } finally {
-      if (btn) btn.innerHTML = '<span class="icon">🧾</span>發票匯入';
     }
   }
 
