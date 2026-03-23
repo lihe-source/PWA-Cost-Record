@@ -1,5 +1,5 @@
 /* ─────────────────────────────────────────────────────────────
-   Cost Record PWA — app.js  V0.3
+   Cost Record PWA — app.js  V0.6
    Modules: DataStore · InvoiceService · DriveService · App
 ───────────────────────────────────────────────────────────── */
 'use strict';
@@ -65,7 +65,8 @@ class DataStore {
         googleClientId:     ''
       },
       importedInvoiceNos: [],
-      lastSync: null
+      lastSync: null,
+      storeMapping: []
     };
   }
 
@@ -435,258 +436,212 @@ class DriveService {
 // UTILITY HELPERS
 // ══════════════════════════════════════════════════════════════
 const fmt = {
-  money: n => `$${Number(n || 0).toLocaleString('zh-TW')}`,
-  date: d => {
-    if (!d) return '';
-    const [y, m, day] = d.split('-');
-    return `${y}/${m}/${day}`;
-  },
-  monthLabel: (y, m) => `${y} 年 ${m} 月`,
-  today: () => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-  }
+  money: n => `$${Number(n||0).toLocaleString('zh-TW')}`,
+  date: d => { if(!d) return ''; const [y,m,day]=d.split('-'); return `${y}/${m}/${day}`; },
+  monthLabel: (y,m) => `${y} 年 ${m} 月`,
+  today: () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 };
+function genId() { return `${Date.now()}-${Math.random().toString(36).slice(2,7)}`; }
+function getCatIcon(cat2) { return CAT_ICONS[cat2]||CAT_ICONS['其他']; }
 
-function genId() {
-  return `${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
-}
-
-function getCatIcon(cat2) {
-  return CAT_ICONS[cat2] || CAT_ICONS['其他'];
-}
+// Color palette for charts
+const CHART_COLORS = ['#f59e0b','#3b82f6','#22c55e','#f43f5e','#a78bfa','#f97316','#2dd4bf','#f472b6','#84cc16','#fb923c'];
 
 // ══════════════════════════════════════════════════════════════
-// MAIN APP  V0.5
+// MAIN APP  V0.6
 // ══════════════════════════════════════════════════════════════
 class App {
   constructor() {
-    this.store     = new DataStore();
-    this.invoice   = new InvoiceService();
-    this.csvParser = new CsvInvoiceParser();
-    this.drive     = new DriveService();
-    this.view      = 'home';
-    this.today     = fmt.today();
-    this.selected  = fmt.today();
+    this.store      = new DataStore();
+    this.invoice    = new InvoiceService();
+    this.csvParser  = new CsvInvoiceParser();
+    this.drive      = new DriveService();
+    this.view       = 'home';
+    this.today      = fmt.today();
+    this.selected   = fmt.today();
     this.calendarYear  = new Date().getFullYear();
-    this.calendarMonth = new Date().getMonth() + 1;
-    // Stats state
+    this.calendarMonth = new Date().getMonth()+1;
     this.statsYear  = new Date().getFullYear();
-    this.statsMonth = new Date().getMonth() + 1;
+    this.statsMonth = new Date().getMonth()+1;
     this.statsCustom = false;
+    this.statsSortMode = 'amount'; // 'amount' | 'date'
     this._toastTimer = null;
-    this._editId     = null;
+    this._editId = null;
+    this._swipeStartX = null;
+    this._swipeStartY = null;
   }
 
-  // ─── INIT ───────────────────────────────────────────────────
+  // ─── INIT ────────────────────────────────────────────────────
   init() {
     this._setupNav();
     this._setupUpdateBanner();
     this._registerSW();
     this.renderView();
-
-    const { googleClientId } = this.store.data.settings;
-    if (googleClientId) this.drive.init(googleClientId).catch(()=>{});
-
+    const {googleClientId}=this.store.data.settings;
+    if(googleClientId) this.drive.init(googleClientId).catch(()=>{});
     // Hidden CSV input
-    const csvInput = document.createElement('input');
-    csvInput.type = 'file'; csvInput.id = 'csv-invoice-input';
-    csvInput.accept = '.csv'; csvInput.style.display = 'none';
-    document.body.appendChild(csvInput);
-    csvInput.addEventListener('change', e => this._handleCsvFile(e));
-
-    // Global click delegation
-    document.addEventListener('click', e => {
-      if (e.target.closest('#add-expense-btn'))   this.openExpenseModal(null);
-      if (e.target.closest('#invoice-fetch-btn')) this.openInvoiceImportModal();
-      if (e.target.closest('#nav-add-btn'))        this.openExpenseModal(null);
+    const ci=document.createElement('input');
+    ci.type='file';ci.id='csv-invoice-input';ci.accept='.csv';ci.style.display='none';
+    document.body.appendChild(ci);
+    ci.addEventListener('change',e=>this._handleCsvFile(e));
+    // FAB click
+    document.addEventListener('click',e=>{
+      if(e.target.closest('#nav-add-btn')) this.openExpenseModal(null);
     });
   }
 
   _setupNav() {
-    document.querySelectorAll('.nav-btn[data-view]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const v = btn.dataset.view;
-        this.view = v;
-        document.querySelectorAll('.nav-btn').forEach(b =>
-          b.classList.toggle('active', b.dataset.view === v)
-        );
+    document.querySelectorAll('.nav-btn[data-view]').forEach(btn=>{
+      btn.addEventListener('click',()=>{
+        const v=btn.dataset.view;
+        this.view=v;
+        document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
         this.renderView();
       });
     });
   }
 
   _setupUpdateBanner() {
-    document.getElementById('update-banner')?.addEventListener('click', () => {
-      navigator.serviceWorker?.controller?.postMessage({ type: 'SKIP_WAITING' });
+    document.getElementById('update-banner')?.addEventListener('click',()=>{
+      navigator.serviceWorker?.controller?.postMessage({type:'SKIP_WAITING'});
       window.location.reload();
     });
   }
 
   _registerSW() {
-    if (!('serviceWorker' in navigator)) return;
-    navigator.serviceWorker.register('./service-worker.js').then(reg => {
-      reg.addEventListener('updatefound', () => {
-        reg.installing?.addEventListener('statechange', () => {
-          if (reg.installing?.state === 'installed' && navigator.serviceWorker.controller)
-            document.getElementById('update-banner').style.display = 'block';
+    if(!('serviceWorker' in navigator)) return;
+    navigator.serviceWorker.register('./service-worker.js').then(reg=>{
+      reg.addEventListener('updatefound',()=>{
+        reg.installing?.addEventListener('statechange',()=>{
+          if(reg.installing?.state==='installed'&&navigator.serviceWorker.controller)
+            document.getElementById('update-banner').style.display='block';
         });
       });
     });
-    navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload());
+    navigator.serviceWorker.addEventListener('controllerchange',()=>window.location.reload());
   }
 
   renderView() {
-    const main = document.getElementById('main-content');
-    const h1   = document.querySelector('#app-header h1');
-    main.classList.toggle('home-mode', this.view === 'home');
-    switch (this.view) {
-      case 'home':     main.innerHTML = this._buildHome();     h1.textContent = '記帳本'; break;
-      case 'search':   main.innerHTML = this._buildSearch();   h1.textContent = '搜尋';   break;
-      case 'settings': main.innerHTML = this._buildSettings(); h1.textContent = '設定';   break;
-      case 'stats':    main.innerHTML = this._buildStats();    h1.textContent = '統計';   break;
+    const main=document.getElementById('main-content');
+    const h1=document.querySelector('#app-header h1');
+    main.classList.toggle('home-mode',this.view==='home');
+    switch(this.view) {
+      case 'home':     main.innerHTML=this._buildHome();     h1.textContent='記帳本'; break;
+      case 'search':   main.innerHTML=this._buildSearch();   h1.textContent='搜尋';   break;
+      case 'settings': main.innerHTML=this._buildSettings(); h1.textContent='設定';   break;
+      case 'stats':    main.innerHTML=this._buildStats();    h1.textContent='統計';   break;
     }
     this._attachViewEvents();
   }
 
-  // ─── HOME ────────────────────────────────────────────────────
+  // ─── HOME ─────────────────────────────────────────────────────
   _buildHome() {
-    const { calendarYear: y, calendarMonth: m } = this;
-    const monthlyExpenses = this.store.getByMonth(y, m);
-    const total        = monthlyExpenses.reduce((s,e) => s + Number(e.amount||0), 0);
-    const pendingCount = monthlyExpenses.filter(e => e.status === 'pending').length;
-    const datesSet     = this.store.getDatesWithExpenses(y, m);
-    const catMap = {};
-    monthlyExpenses.forEach(e => { const k=e.category1||'未分類'; catMap[k]=(catMap[k]||0)+Number(e.amount||0); });
-    const catEntries = Object.entries(catMap).sort((a,b)=>b[1]-a[1]);
-    const dayExpenses = this.store.getByDate(this.selected);
-    const dayTotal    = dayExpenses.reduce((s,e)=>s+Number(e.amount||0),0);
-    const pendingEl   = pendingCount>0
-      ? `<span class="pending-badge" id="pending-badge">${pendingCount}</span>`
-      : `<span style="color:var(--text2)">${pendingCount}</span>`;
-
-    const groups = this._groupExpenses(dayExpenses);
-
+    const {calendarYear:y,calendarMonth:m}=this;
+    const monthly=this.store.getByMonth(y,m);
+    const total=monthly.reduce((s,e)=>s+Number(e.amount||0),0);
+    const pending=monthly.filter(e=>e.status==='pending').length;
+    const datesSet=this.store.getDatesWithExpenses(y,m);
+    const catMap={};
+    monthly.forEach(e=>{const k=e.category1||'未分類';catMap[k]=(catMap[k]||0)+Number(e.amount||0);});
+    const catEntries=Object.entries(catMap).sort((a,b)=>b[1]-a[1]);
+    const day=this.store.getByDate(this.selected);
+    const dayTotal=day.reduce((s,e)=>s+Number(e.amount||0),0);
+    const pendingEl=pending>0
+      ?`<span class="pending-badge" id="pending-badge">${pending}</span>`
+      :`<span style="color:var(--text2)">${pending}</span>`;
+    const groups=this._groupExpenses(day);
     return `
       <div class="home-top">
         <div class="month-nav">
-          <div class="month-nav-title">${fmt.monthLabel(y, m)}</div>
+          <div class="month-nav-title">${fmt.monthLabel(y,m)}</div>
           <div class="month-nav-btns">
-            <button class="today-btn" id="goto-today-btn">回到當日</button>
+            <button class="today-btn" id="goto-today-btn">今日</button>
             <button class="icon-btn" id="prev-month-btn">‹</button>
             <button class="icon-btn" id="next-month-btn">›</button>
           </div>
         </div>
-        <div class="calendar-wrap">${this._buildCalendar(y, m, datesSet)}</div>
+        <div class="cal-swipe-wrap" id="cal-swipe-wrap">
+          <div class="calendar-wrap">${this._buildCalendar(y,m,datesSet)}</div>
+        </div>
         <div class="month-summary">
           <div class="month-stats">
-            <div class="stat-item">
-              <div class="stat-label">總支出</div>
-              <div class="stat-value big">${fmt.money(total)}</div>
-            </div>
-            <div class="stat-item">
-              <div class="stat-label">筆數</div>
-              <div class="stat-value">${monthlyExpenses.length}</div>
-            </div>
-            <div class="stat-item">
-              <div class="stat-label">待分類 <span style="font-size:8px;color:var(--amber)">↑點擊</span></div>
-              <div class="stat-value">${pendingEl}</div>
-            </div>
+            <div class="stat-item"><div class="stat-label">總支出</div><div class="stat-value big">${fmt.money(total)}</div></div>
+            <div class="stat-item"><div class="stat-label">筆數</div><div class="stat-value">${monthly.length}</div></div>
+            <div class="stat-item"><div class="stat-label">待分類 <span style="font-size:7px;color:var(--amber)">↑點</span></div><div class="stat-value">${pendingEl}</div></div>
           </div>
-          ${catEntries.length ? `
-            <div class="cat-breakdown">
-              ${catEntries.map(([name,amt])=>`
-                <div class="cat-row">
-                  <div class="cat-row-name">${name}</div>
-                  <div class="cat-row-bar-wrap"><div class="cat-row-bar" style="width:${Math.round((amt/total)*100)}%"></div></div>
-                  <div class="cat-row-amount">${fmt.money(amt)}</div>
-                </div>`).join('')}
-            </div>` : ''}
+          ${catEntries.length?`<div class="cat-breakdown">${catEntries.map(([name,amt])=>`
+            <div class="cat-row">
+              <div class="cat-row-name">${name}</div>
+              <div class="cat-row-bar-wrap"><div class="cat-row-bar" style="width:${Math.round((amt/total)*100)}%"></div></div>
+              <div class="cat-row-amount">${fmt.money(amt)}</div>
+            </div>`).join('')}</div>`:''}
         </div>
       </div>
-
       <div class="home-bottom">
         <div class="day-panel-header">
-          <div class="day-panel-title">
-            ${fmt.date(this.selected)}
-            ${dayTotal>0?`<span class="day-total-amt">${fmt.money(dayTotal)}</span>`:''}
-          </div>
-          <div style="display:flex;gap:6px;align-items:center">
-            <button class="invoice-fetch-btn" id="invoice-fetch-btn"><span>🧾</span>發票</button>
-            <button class="add-btn" id="add-expense-btn"><span>＋</span>記帳</button>
+          <div class="day-panel-title">${fmt.date(this.selected)}${dayTotal>0?`<span class="day-total-amt">${fmt.money(dayTotal)}</span>`:''}</div>
+          <div style="display:flex;gap:5px;align-items:center">
+            <button class="btn-day-action btn-import" id="invoice-fetch-btn">🧾 發票</button>
+            <button class="btn-day-action btn-add" id="add-expense-btn">＋ 記帳</button>
           </div>
         </div>
         <div class="expense-list">
           ${groups.length
-            ? groups.map(g => g.type==='invoice-group'
-                ? this._buildGroupCard(g)
-                : this._buildSingleCard(g)).join('')
-            : `<div class="empty-state"><div class="icon">📭</div><p>這天還沒有消費記錄</p></div>`}
+            ?groups.map(g=>g.type==='invoice-group'?this._buildGroupCard(g):this._buildSingleCard(g)).join('')
+            :`<div class="empty-state"><div class="icon">📭</div><p>這天沒有消費記錄</p></div>`}
         </div>
       </div>`;
   }
 
-  // Group expenses: same invoiceNo → single expandable group card
   _groupExpenses(expenses) {
-    const result = [], invMap = new Map();
-    const sorted = [...expenses].sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''));
-    for (const exp of sorted) {
-      if (exp.source === 'invoice' && exp.invoiceNo) {
-        if (!invMap.has(exp.invoiceNo)) {
-          const g = { type:'invoice-group', id:'grp_'+exp.invoiceNo,
-            invoiceNo:exp.invoiceNo, store:exp.store||'', date:exp.date, items:[] };
-          invMap.set(exp.invoiceNo, g); result.push(g);
+    const result=[],invMap=new Map();
+    const sorted=[...expenses].sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''));
+    for(const e of sorted){
+      if(e.source==='invoice'&&e.invoiceNo){
+        if(!invMap.has(e.invoiceNo)){
+          const g={type:'invoice-group',invoiceNo:e.invoiceNo,store:e.store||'',date:e.date,items:[]};
+          invMap.set(e.invoiceNo,g);result.push(g);
         }
-        invMap.get(exp.invoiceNo).items.push(exp);
+        invMap.get(e.invoiceNo).items.push(e);
       } else {
-        result.push({ type:'single', ...exp });
+        result.push({type:'single',...e});
       }
     }
     return result;
   }
 
   _buildGroupCard(g) {
-    const total   = g.items.reduce((s,i)=>s+Number(i.amount||0),0);
-    const pending = g.items.filter(i=>i.status==='pending').length;
-    const cats    = [...new Set(g.items.filter(i=>i.category1).map(i=>i.category1))];
-    const icon    = this._storeIcon(g.store);
+    const total=g.items.reduce((s,i)=>s+Number(i.amount||0),0);
+    const pendingN=g.items.filter(i=>i.status==='pending').length;
+    const cats=[...new Set(g.items.filter(i=>i.category1).map(i=>i.category1))];
     return `
-      <div class="inv-group-card" data-grp="${g.invoiceNo}">
-        <div class="inv-group-header" data-toggle="${g.invoiceNo}">
-          <div class="expense-cat-icon">${icon}</div>
+      <div class="inv-group-card">
+        <div class="inv-group-header">
+          <div class="expense-cat-icon">${this._storeIcon(g.store)}</div>
           <div class="inv-group-store">
             <div class="inv-group-store-name">${g.store||'電子發票'}</div>
-            <div class="inv-group-meta">
-              <span class="inv-group-count">${g.items.length} 項</span>
-              <span class="inv-group-no">${g.invoiceNo}</span>
-            </div>
+            <div class="inv-group-meta"><span class="inv-group-count">${g.items.length} 項</span><span class="inv-group-no">${g.invoiceNo}</span></div>
           </div>
-          <div class="inv-group-right">
-            <div class="inv-group-total">${fmt.money(total)}</div>
-            <div class="inv-group-toggle" id="toggle-${g.invoiceNo}">▼</div>
-          </div>
+          <div class="inv-group-right"><div class="inv-group-total">${fmt.money(total)}</div></div>
         </div>
         <div class="inv-group-tags">
-          ${pending>0?`<span class="expense-cat-badge pending">待分類 ${pending}</span>`:''}
+          ${pendingN>0?`<span class="expense-cat-badge pending">待分類 ${pendingN}</span>`:''}
           ${cats.map(c=>`<span class="expense-cat-badge">${c}</span>`).join('')}
           <span class="expense-cat-badge invoice">🧾 發票</span>
         </div>
-        <div class="inv-group-items" id="items-${g.invoiceNo}">
+        <div class="inv-group-items">
           ${g.items.map(item=>`
             <div class="inv-group-item" data-id="${item.id}">
               <div class="inv-group-item-name">${item.description||'(未命名)'}</div>
               <div class="inv-group-item-amt">${fmt.money(item.amount)}</div>
-              <div class="inv-group-item-cat${item.status==='pending'?' pending':''}">${
-                item.status==='pending'?'待分類':(item.category1?(item.category1+(item.category2?' · '+item.category2:'')):'未分類')
-              }</div>
+              <div class="inv-group-item-cat${item.status==='pending'?' pending':''}">${item.status==='pending'?'待分類':(item.category1||(item.category2?item.category2:'未分類'))}</div>
             </div>`).join('')}
         </div>
       </div>`;
   }
 
   _buildSingleCard(e) {
-    const icon = getCatIcon(e.category2||(e.status==='pending'?'待分類':'其他'));
-    const isPending = e.status==='pending', isInvoice = e.source==='invoice';
+    const icon=getCatIcon(e.category2||(e.status==='pending'?'待分類':'其他'));
     return `
       <div class="expense-card" data-id="${e.id}">
         <div class="expense-cat-icon">${icon}</div>
@@ -694,9 +649,8 @@ class App {
           <div class="expense-desc">${e.description||'(未命名)'}</div>
           <div class="expense-meta">
             ${e.store?`<span class="expense-store">🏪 ${e.store}</span>`:''}
-            ${isPending?`<span class="expense-cat-badge pending">待分類</span>`:
-              e.category1?`<span class="expense-cat-badge">${e.category1}${e.category2?' · '+e.category2:''}</span>`:''}
-            ${isInvoice?`<span class="expense-cat-badge invoice">🧾</span>`:''}
+            ${e.status==='pending'?`<span class="expense-cat-badge pending">待分類</span>`:e.category1?`<span class="expense-cat-badge">${e.category1}${e.category2?' · '+e.category2:''}</span>`:''}
+            ${e.source==='invoice'?`<span class="expense-cat-badge invoice">🧾</span>`:''}
           </div>
         </div>
         <div class="expense-amount">${fmt.money(e.amount)}</div>
@@ -704,170 +658,145 @@ class App {
   }
 
   _storeIcon(store) {
-    if (!store) return '🧾';
-    const s = store.toLowerCase();
-    if (s.includes('全家')||s.includes('family')) return '🏪';
-    if (s.includes('7-11')||s.includes('統一超商')) return '🏪';
-    if (s.includes('家福')||s.includes('carrefour')||s.includes('全聯')) return '🛒';
-    if (s.includes('大創')||s.includes('daiso')) return '🛍️';
-    if (s.includes('楓康')||s.includes('超市')) return '🛒';
-    if (s.includes('麥當勞')||s.includes('mcdonald')) return '🍔';
-    if (s.includes('大魯閣')) return '🎳';
-    if (s.includes('apple')||s.includes('蘋果')) return '🍎';
+    if(!store) return '🧾';
+    const s=store.toLowerCase();
+    if(s.includes('全家')||s.includes('family')) return '🏪';
+    if(s.includes('7-11')||s.includes('統一')) return '🏪';
+    if(s.includes('全聯')||s.includes('家福')) return '🛒';
+    if(s.includes('大創')||s.includes('daiso')) return '🛍️';
+    if(s.includes('麥當勞')) return '🍔';
+    if(s.includes('星巴克')) return '☕';
     return '🧾';
   }
 
-  _buildCalendar(year, month, datesSet) {
-    const firstDay    = new Date(year, month-1, 1).getDay();
-    const daysInMonth = new Date(year, month, 0).getDate();
-    const daysInPrev  = new Date(year, month-1, 0).getDate();
-    const dowLabels   = ['日','一','二','三','四','五','六'];
-    let html = '<div class="cal-grid">';
-    html += dowLabels.map((d,i)=>`<div class="cal-dow">${d}</div>`).join('');
-    for (let i=0;i<firstDay;i++) {
-      const d=daysInPrev-firstDay+1+i;
-      html+=`<div class="cal-day other-month"><div class="cal-day-num">${d}</div><div class="cal-dot-wrap"></div></div>`;
-    }
-    for (let d=1;d<=daysInMonth;d++) {
-      const dateStr=`${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-      const isToday=dateStr===this.today, isSel=dateStr===this.selected;
-      const hasDots=datesSet.has(dateStr);
+  _buildCalendar(year,month,datesSet) {
+    const first=new Date(year,month-1,1).getDay();
+    const days=new Date(year,month,0).getDate();
+    const prevDays=new Date(year,month-1,0).getDate();
+    const dows=['日','一','二','三','四','五','六'];
+    let h='<div class="cal-grid">';
+    h+=dows.map(d=>`<div class="cal-dow">${d}</div>`).join('');
+    for(let i=0;i<first;i++) h+=`<div class="cal-day other-month"><div class="cal-day-num">${prevDays-first+1+i}</div><div class="cal-dot-wrap"></div></div>`;
+    for(let d=1;d<=days;d++){
+      const ds=`${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      const isT=ds===this.today,isSel=ds===this.selected,hasDot=datesSet.has(ds);
       const dow=new Date(year,month-1,d).getDay();
       let cls='cal-day';
-      if(isToday) cls+=' today';
-      if(isSel)   cls+=' selected';
-      if(dow===0) cls+=' is-sun';
-      if(dow===6) cls+=' is-sat';
-      html+=`<div class="${cls}" data-date="${dateStr}"><div class="cal-day-num">${d}</div><div class="cal-dot-wrap">${hasDots?'<div class="cal-dot"></div>':''}</div></div>`;
+      if(isT) cls+=' today'; if(isSel) cls+=' selected';
+      if(dow===0) cls+=' is-sun'; if(dow===6) cls+=' is-sat';
+      h+=`<div class="${cls}" data-date="${ds}"><div class="cal-day-num">${d}</div><div class="cal-dot-wrap">${hasDot?'<div class="cal-dot"></div>':''}</div></div>`;
     }
-    const rem=(firstDay+daysInMonth)%7===0?0:7-((firstDay+daysInMonth)%7);
-    for(let d=1;d<=rem;d++) html+=`<div class="cal-day other-month"><div class="cal-day-num">${d}</div><div class="cal-dot-wrap"></div></div>`;
-    return html+'</div>';
+    const rem=(first+days)%7===0?0:7-((first+days)%7);
+    for(let d=1;d<=rem;d++) h+=`<div class="cal-day other-month"><div class="cal-day-num">${d}</div><div class="cal-dot-wrap"></div></div>`;
+    return h+'</div>';
   }
 
-  // ─── SEARCH ──────────────────────────────────────────────────
+  // ─── SEARCH ───────────────────────────────────────────────────
   _buildSearch() {
     return `<div class="search-wrap">
       <div class="search-box">
         <span class="search-icon">🔍</span>
-        <input id="search-input" placeholder="搜尋消費項目、店家、分類..." type="search" autocomplete="off">
+        <input id="search-input" placeholder="搜尋消費項目、店家、分類…" type="search" autocomplete="off" autocorrect="off" autocapitalize="off">
+        <button class="search-clear hidden" id="search-clear" title="清除">✕</button>
       </div>
-      <div class="search-results-info" id="search-info">輸入關鍵字以搜尋記帳歷史</div>
-      <div class="expense-list" id="search-results"></div>
+      <div class="search-results-info" id="search-info">輸入關鍵字以搜尋</div>
+      <div id="search-results" class="expense-list" style="padding:0;gap:5px;"></div>
     </div>`;
   }
 
-  // ─── SETTINGS (includes backup) ─────────────────────────────
+  // ─── SETTINGS ─────────────────────────────────────────────────
   _buildSettings() {
-    const s = this.store.data.settings;
-    const cats = this.store.data.categories;
-    const lastSync = this.store.data.lastSync;
+    const s=this.store.data.settings;
+    const cats=this.store.data.categories;
+    const lastSync=this.store.data.lastSync;
+    const storeMap=this.store.data.storeMapping||[];
     return `<div class="settings-wrap">
-      <!-- Categories -->
       <div class="settings-section">
         <div class="settings-section-title">分類管理</div>
-        <div class="cat-tree" id="cat-tree">
-          ${cats.map((cat,ci)=>this._buildCatNode(cat,ci)).join('')}
-        </div>
-        <div style="padding:10px 13px;">
-          <button class="btn-primary" id="add-parent-cat-btn" style="width:100%;font-size:13px;">＋ 新增大分類</button>
+        <div class="cat-tree" id="cat-tree">${cats.map((cat,ci)=>this._buildCatNode(cat,ci)).join('')}</div>
+        <div style="padding:8px 12px;">
+          <button class="btn-primary" id="add-parent-cat-btn" style="width:100%;font-size:12px;">＋ 新增大分類</button>
         </div>
       </div>
 
-      <!-- Invoice API -->
+      <div class="settings-section">
+        <div class="settings-section-title">🏪 消費店家自動分類</div>
+        <div style="padding:8px 12px 6px;font-size:10px;color:var(--text3);line-height:1.6;">設定店家名稱對應的分類，匯入發票時自動套用。</div>
+        <div class="store-map-list" id="store-map-list">
+          ${storeMap.length?storeMap.map((m,i)=>`
+            <div class="store-map-item">
+              <div class="store-map-name" title="${m.store}">${m.store}</div>
+              <div class="store-map-cats">${m.cat1}${m.cat2?' › '+m.cat2:''}</div>
+              <button class="store-map-del" data-si="${i}">✕</button>
+            </div>`).join('')
+            :`<div class="store-map-empty">尚無設定。按下方「＋新增」來新增。</div>`}
+        </div>
+        <div style="padding:8px 12px;">
+          <button class="btn-primary" id="add-store-map-btn" style="width:100%;font-size:12px;">＋ 新增店家分類規則</button>
+        </div>
+      </div>
+
       <div class="settings-section">
         <div class="settings-section-title">📋 電子發票 API</div>
-        <div class="modal-body" style="padding:12px 14px;gap:10px;max-height:none;overflow:visible;">
-          <div class="form-group">
-            <label class="form-label">手機條碼</label>
-            <input class="form-input form-input-sm" id="s-cardNo" placeholder="/XXXXXXX" value="${s.invoiceCardNo||''}">
-          </div>
-          <div class="form-group">
-            <label class="form-label">驗證碼</label>
-            <div class="api-key-wrap">
-              <input class="form-input form-input-sm" id="s-cardEnc" type="password" placeholder="驗證碼" value="${s.invoiceCardEncrypt||''}">
-              <button class="api-key-toggle" data-target="s-cardEnc">👁</button>
-            </div>
-          </div>
+        <div style="padding:10px 12px;display:flex;flex-direction:column;gap:8px;">
+          <div class="form-group"><label class="form-label">手機條碼</label>
+            <input class="form-input" id="s-cardNo" placeholder="/XXXXXXX" value="${s.invoiceCardNo||''}"></div>
+          <div class="form-group"><label class="form-label">驗證碼</label>
+            <div class="api-key-wrap"><input class="form-input" id="s-cardEnc" type="password" placeholder="驗證碼" value="${s.invoiceCardEncrypt||''}">
+            <button class="api-key-toggle" data-target="s-cardEnc">👁</button></div></div>
           <div class="form-row-2">
-            <div class="form-group">
-              <label class="form-label">App ID</label>
-              <input class="form-input form-input-sm" id="s-appId" placeholder="AppID" value="${s.invoiceAppId||''}">
-            </div>
-            <div class="form-group">
-              <label class="form-label">API Key</label>
-              <div class="api-key-wrap">
-                <input class="form-input form-input-sm" id="s-apiKey" type="password" placeholder="API Key" value="${s.invoiceApiKey||''}">
-                <button class="api-key-toggle" data-target="s-apiKey">👁</button>
-              </div>
-            </div>
+            <div class="form-group"><label class="form-label">App ID</label>
+              <input class="form-input" id="s-appId" placeholder="AppID" value="${s.invoiceAppId||''}"></div>
+            <div class="form-group"><label class="form-label">API Key</label>
+              <div class="api-key-wrap"><input class="form-input" id="s-apiKey" type="password" placeholder="Key" value="${s.invoiceApiKey||''}">
+              <button class="api-key-toggle" data-target="s-apiKey">👁</button></div></div>
           </div>
-          <button class="btn-primary" id="save-invoice-settings-btn" style="font-size:13px;">儲存</button>
+          <button class="btn-primary" id="save-invoice-settings-btn" style="font-size:12px;">儲存發票設定</button>
         </div>
       </div>
 
-      <!-- Gemini -->
       <div class="settings-section">
         <div class="settings-section-title">🤖 Gemini AI</div>
-        <div class="modal-body" style="padding:12px 14px;gap:10px;max-height:none;overflow:visible;">
-          <div class="form-group">
-            <label class="form-label">API Key（僅存本機）</label>
-            <div class="api-key-wrap">
-              <input class="form-input form-input-sm" id="s-geminiKey" type="password" placeholder="Gemini API Key" value="${s.geminiApiKey||''}">
-              <button class="api-key-toggle" data-target="s-geminiKey">👁</button>
-            </div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">模型</label>
-            <select class="form-select form-select-sm" id="s-geminiModel">
-              ${GEMINI_MODELS.map(m=>`<option value="${m}" ${s.geminiModel===m?'selected':''}>${m}</option>`).join('')}
-            </select>
-          </div>
-          <button class="btn-primary" id="save-gemini-settings-btn" style="font-size:13px;">儲存</button>
+        <div style="padding:10px 12px;display:flex;flex-direction:column;gap:8px;">
+          <div class="form-group"><label class="form-label">API Key</label>
+            <div class="api-key-wrap"><input class="form-input" id="s-geminiKey" type="password" placeholder="Gemini API Key" value="${s.geminiApiKey||''}">
+            <button class="api-key-toggle" data-target="s-geminiKey">👁</button></div></div>
+          <div class="form-group"><label class="form-label">模型</label>
+            <select class="form-select" id="s-geminiModel">${GEMINI_MODELS.map(m=>`<option value="${m}" ${s.geminiModel===m?'selected':''}>${m}</option>`).join('')}</select></div>
+          <button class="btn-primary" id="save-gemini-settings-btn" style="font-size:12px;">儲存 AI 設定</button>
         </div>
       </div>
 
-      <!-- Google Drive -->
       <div class="settings-section">
-        <div class="settings-section-title">☁️ Google Drive</div>
-        <div class="modal-body" style="padding:12px 14px;gap:10px;max-height:none;overflow:visible;">
-          <div class="form-group">
-            <label class="form-label">OAuth Client ID</label>
-            <input class="form-input form-input-sm" id="s-gClientId" placeholder="xxxx.apps.googleusercontent.com" value="${s.googleClientId||''}">
+        <div class="settings-section-title">☁️ Google Drive 備份</div>
+        <div style="padding:10px 12px;display:flex;flex-direction:column;gap:8px;">
+          <div class="form-group"><label class="form-label">OAuth Client ID</label>
+            <input class="form-input" id="s-gClientId" placeholder="xxxx.apps.googleusercontent.com" value="${s.googleClientId||''}"></div>
+          <button class="btn-primary" id="save-drive-settings-btn" style="font-size:12px;">儲存</button>
+          ${lastSync?`<div class="last-sync-info">上次同步：${lastSync}</div>`:''}
+          <div class="backup-action-row">
+            <button class="btn-primary" id="drive-upload-btn" style="font-size:12px;">☁️ 上傳備份</button>
+            <button class="btn-secondary" id="drive-list-btn" style="font-size:12px;">📂 備份清單</button>
           </div>
-          <button class="btn-primary" id="save-drive-settings-btn" style="font-size:13px;">儲存</button>
+          <div id="drive-backup-list" class="backup-list"></div>
         </div>
       </div>
 
-      <!-- Backup -->
       <div class="settings-section">
-        <div class="settings-section-title">💾 備份管理</div>
-        <div style="padding:12px 13px;display:flex;flex-direction:column;gap:10px;">
-          <div class="backup-card" style="background:var(--bg3);border:none;">
-            <div class="backup-card-title">本機備份</div>
-            <div class="backup-card-sub">匯出/匯入 JSON 檔案至本機裝置</div>
-            <div class="backup-action-row">
-              <button class="btn-primary" id="export-local-btn" style="font-size:12px;">📤 匯出</button>
-              <button class="btn-secondary" id="import-local-btn" style="font-size:12px;">📥 匯入</button>
-            </div>
-            <input type="file" id="import-file-input" accept=".json" style="display:none">
+        <div class="settings-section-title">💾 本機備份</div>
+        <div style="padding:10px 12px;display:flex;flex-direction:column;gap:8px;">
+          <div class="backup-action-row">
+            <button class="btn-primary" id="export-local-btn" style="font-size:12px;">📤 匯出 JSON</button>
+            <button class="btn-secondary" id="import-local-btn" style="font-size:12px;">📥 匯入 JSON</button>
           </div>
-          <div class="backup-card" style="background:var(--bg3);border:none;">
-            <div class="backup-card-title">Google Drive</div>
-            <div class="backup-card-sub">${lastSync?`最後同步：<span class="last-sync-info">${lastSync}</span>`:'尚未同步'}</div>
-            <div class="backup-action-row">
-              <button class="btn-primary" id="drive-upload-btn" style="font-size:12px;">☁️ 上傳</button>
-              <button class="btn-secondary" id="drive-list-btn" style="font-size:12px;">📂 備份清單</button>
-            </div>
-            <div id="drive-backup-list" class="backup-list"></div>
-          </div>
+          <input type="file" id="import-file-input" accept=".json" style="display:none">
           <button class="btn-danger" id="clear-data-btn">⚠️ 清除所有資料</button>
         </div>
       </div>
     </div>`;
   }
 
-  _buildCatNode(cat, ci) {
+  _buildCatNode(cat,ci) {
     return `<div class="cat-parent" data-ci="${ci}">
       <div class="cat-parent-row">
         <button class="cat-toggle" data-ci="${ci}">▶</button>
@@ -887,14 +816,14 @@ class App {
             </div>
           </div>`).join('')}
         <div class="cat-add-row">
-          <input class="cat-add-input" id="sub-input-${ci}" placeholder="新增小分類...">
-          <button class="btn-primary" data-action="add-sub" data-ci="${ci}" style="padding:6px 12px;font-size:12px;">新增</button>
+          <input class="cat-add-input" id="sub-input-${ci}" placeholder="新增小分類…">
+          <button class="btn-primary" data-action="add-sub" data-ci="${ci}" style="padding:5px 11px;font-size:11px;">新增</button>
         </div>
       </div>
     </div>`;
   }
 
-  // ─── STATS ───────────────────────────────────────────────────
+  // ─── STATS ────────────────────────────────────────────────────
   _buildStats() {
     return `<div class="stats-wrap">
       <div class="stats-month-nav">
@@ -904,7 +833,7 @@ class App {
         <button class="stats-custom-btn${this.statsCustom?' active':''}" id="stats-custom-btn">自訂</button>
       </div>
       <div class="stats-custom-range${this.statsCustom?' open':''}" id="stats-custom-range">
-        <input class="stats-range-input" type="date" id="stats-from" value="${this._statsDefaultFrom()}">
+        <input class="stats-range-input" type="date" id="stats-from" value="${this._statsFromDefault()}">
         <span class="stats-range-sep">—</span>
         <input class="stats-range-input" type="date" id="stats-to" value="${fmt.today()}">
         <button class="stats-range-btn" id="stats-range-apply">套用</button>
@@ -913,91 +842,169 @@ class App {
     </div>`;
   }
 
-  _statsDefaultFrom() {
-    const d = new Date(this.statsYear, this.statsMonth-1, 1);
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
+  _statsFromDefault() {
+    return `${this.statsYear}-${String(this.statsMonth).padStart(2,'0')}-01`;
   }
 
   _renderStats(expenses) {
-    const total = expenses.reduce((s,e)=>s+Number(e.amount||0),0);
-    const catMap = {}, subMap = {};
+    const total=expenses.reduce((s,e)=>s+Number(e.amount||0),0);
+    // Build cat maps
+    const catMap={};
+    const subMap={};
+    const catExpenses={};
     expenses.forEach(e=>{
       const k1=e.category1||'未分類';
       catMap[k1]=(catMap[k1]||0)+Number(e.amount||0);
-      const k2=k1+'||'+(e.category2||'(未選小分類)');
-      subMap[k2]=(subMap[k2]||0)+Number(e.amount||0);
+      if(!catExpenses[k1]) catExpenses[k1]=[];
+      catExpenses[k1].push(e);
+      const k2=k1+'||'+(e.category2||'(未分小類)');
+      if(!subMap[k2]) subMap[k2]={amount:0,items:[]};
+      subMap[k2].amount+=Number(e.amount||0);
+      subMap[k2].items.push(e);
     });
     const catEntries=Object.entries(catMap).sort((a,b)=>b[1]-a[1]);
-    const COLORS=['#f59e0b','#3b82f6','#22c55e','#f43f5e','#a78bfa','#f97316','#06b6d4','#84cc16'];
 
     const el=document.getElementById('stats-content');
     if(!el) return;
+
+    // Sort expenses for cat list
+    const sortedCatEntries = this.statsSortMode==='amount'
+      ? [...catEntries].sort((a,b)=>b[1]-a[1])
+      : [...catEntries].sort((a,b)=>{
+          const la=catExpenses[a[0]]?.sort((x,y)=>y.date.localeCompare(x.date))[0]?.date||'';
+          const lb=catExpenses[b[0]]?.sort((x,y)=>y.date.localeCompare(x.date))[0]?.date||'';
+          return lb.localeCompare(la);
+        });
+
     el.innerHTML=`
       <div class="stats-total-card">
         <div class="stats-total-label">總支出</div>
         <div class="stats-total-amt">${fmt.money(total)}</div>
         <div class="stats-total-sub">${expenses.length} 筆記錄</div>
       </div>
-      <canvas id="stats-pie" width="220" height="220" style="display:block;margin:0 auto 4px;"></canvas>
-      <div class="stats-legend">
-        ${catEntries.map(([name],i)=>`
-          <div class="stats-legend-item">
-            <span class="stats-cat-dot" style="background:${COLORS[i%COLORS.length]}"></span>
-            <span>${name}</span>
-          </div>`).join('')}
+
+      <div class="stats-chart-row">
+        <div class="stats-pie-wrap">
+          <canvas id="stats-pie" width="160" height="160"></canvas>
+        </div>
+        <div class="stats-legend" id="stats-legend">
+          ${catEntries.map(([name,amt],i)=>{
+            const pct=total>0?((amt/total)*100).toFixed(1):0;
+            return `<div class="stats-legend-item">
+              <span class="stats-cat-dot" style="background:${CHART_COLORS[i%CHART_COLORS.length]}"></span>
+              <span class="stats-legend-name">${name}</span>
+              <span class="stats-legend-pct">${pct}%</span>
+            </div>`;
+          }).join('')}
+        </div>
       </div>
-      <div class="stats-cat-list">
-        ${catEntries.length?catEntries.map(([name,amt],i)=>{
+
+      <div class="stats-sort-bar">
+        <span class="stats-sort-label">排序：</span>
+        <button class="stats-sort-btn${this.statsSortMode==='amount'?' active':''}" data-sort="amount">金額高低</button>
+        <button class="stats-sort-btn${this.statsSortMode==='date'?' active':''}" data-sort="date">最近優先</button>
+      </div>
+
+      <div class="stats-cat-list" id="stats-cat-list">
+        ${sortedCatEntries.length?sortedCatEntries.map(([name,amt],i)=>{
           const pct=total>0?((amt/total)*100).toFixed(1):0;
-          const color=COLORS[i%COLORS.length];
-          const subs=Object.entries(subMap).filter(([k])=>k.startsWith(name+'||')).sort((a,b)=>b[1]-a[1]);
-          return `<div class="stats-cat-item">
+          const color=CHART_COLORS[catEntries.findIndex(([n])=>n===name)%CHART_COLORS.length];
+          // sub-categories for this cat
+          const subs=Object.entries(subMap).filter(([k])=>k.startsWith(name+'||')).sort((a,b)=>b[1].amount-a[1].amount);
+          return `<div class="stats-cat-item" data-cat="${name}">
             <div class="stats-cat-header">
-              <span class="stats-cat-dot" style="background:${color}"></span>
+              <span class="stats-cat-dot-big" style="background:${color}"></span>
               <span class="stats-cat-name">${name}</span>
-              <div style="flex:1;margin:0 8px;height:5px;background:var(--bg3);border-radius:3px;overflow:hidden;">
-                <div style="height:100%;width:${pct}%;background:${color};border-radius:3px;transition:width .5s;"></div>
-              </div>
+              <div class="stats-cat-bar-wrap"><div class="stats-cat-bar" style="width:${pct}%;background:${color}"></div></div>
               <span class="stats-cat-pct">${pct}%</span>
               <span class="stats-cat-amt">${fmt.money(amt)}</span>
+              <span class="stats-cat-toggle">▼</span>
             </div>
-            ${subs.length>1?`<div class="stats-sub-list">
-              ${subs.map(([k,sa])=>{
+            <div class="stats-cat-sub-list" id="scat-${name.replace(/\s/g,'_')}">
+              ${subs.map(([k,sd])=>{
                 const subName=k.split('||')[1];
-                const sp=total>0?((sa/total)*100).toFixed(1):0;
-                return `<div class="stats-sub-item">
-                  <span class="stats-sub-name">${subName}</span>
-                  <span class="stats-sub-amt">${fmt.money(sa)}</span>
-                  <span class="stats-sub-pct">${sp}%</span>
-                </div>`;
-              }).join('')}</div>`:''}
+                const sp=total>0?((sd.amount/total)*100).toFixed(1):0;
+                const sortedItems=this.statsSortMode==='amount'
+                  ?[...sd.items].sort((a,b)=>Number(b.amount)-Number(a.amount))
+                  :[...sd.items].sort((a,b)=>b.date.localeCompare(a.date));
+                return `<div class="stats-sub-cat-header">
+                    <span class="stats-sub-cat-label">${subName}</span>
+                    <span class="stats-sub-cat-pct">${sp}%</span>
+                    <span class="stats-sub-cat-amt">${fmt.money(sd.amount)}</span>
+                  </div>
+                  ${sortedItems.map(it=>`
+                    <div class="stats-expense-row" data-id="${it.id}">
+                      <span class="stats-expense-date">${fmt.date(it.date)}</span>
+                      <span class="stats-expense-desc">${it.description||'(未命名)'}</span>
+                      ${it.store?`<span class="stats-expense-store">${it.store}</span>`:''}
+                      <span class="stats-expense-amt">${fmt.money(it.amount)}</span>
+                    </div>`).join('')}`;
+              }).join('')}
+            </div>
           </div>`;
         }).join(''):`<div class="empty-state"><div class="icon">📊</div><p>此期間無記錄</p></div>`}
       </div>`;
 
-    requestAnimationFrame(()=>{
-      const canvas=document.getElementById('stats-pie');
-      if(!canvas||!catEntries.length){canvas&&(canvas.style.display='none');return;}
-      const ctx=canvas.getContext('2d');
-      const cx=110,cy=110,r=85,inner=50;
-      let angle=-Math.PI/2;
-      catEntries.forEach(([,amt],i)=>{
-        const slice=total>0?(amt/total)*Math.PI*2:0;
-        ctx.beginPath(); ctx.moveTo(cx,cy); ctx.arc(cx,cy,r,angle,angle+slice); ctx.closePath();
-        ctx.fillStyle=COLORS[i%COLORS.length]; ctx.fill();
-        ctx.strokeStyle='#1a1a28'; ctx.lineWidth=2; ctx.stroke();
-        angle+=slice;
-      });
-      ctx.beginPath(); ctx.arc(cx,cy,inner,0,Math.PI*2);
-      ctx.fillStyle='#1a1a28'; ctx.fill();
-      ctx.fillStyle='#f0f0f8'; ctx.font='bold 13px DM Mono,monospace';
-      ctx.textAlign='center'; ctx.fillText(fmt.money(total),cx,cy+5);
-    });
+    // Draw donut pie with sub-segments
+    requestAnimationFrame(()=>this._drawPie(catEntries,subMap,total));
   }
 
-  // ─── ATTACH VIEW EVENTS ────────────────────────────────────
+  _drawPie(catEntries,subMap,total) {
+    const canvas=document.getElementById('stats-pie');
+    if(!canvas||!catEntries.length){canvas&&(canvas.style.display='none');return;}
+    const ctx=canvas.getContext('2d');
+    const cx=80,cy=80,outerR=72,innerR=42,midR=58;
+    ctx.clearRect(0,0,160,160);
+    let angle=-Math.PI/2;
+
+    catEntries.forEach(([name,amt],i)=>{
+      const color=CHART_COLORS[i%CHART_COLORS.length];
+      const catSlice=total>0?(amt/total)*Math.PI*2:0;
+      // Draw outer ring: sub-categories within this slice
+      const subs=Object.entries(subMap).filter(([k])=>k.startsWith(name+'||')).sort((a,b)=>b[1].amount-a[1].amount);
+      if(subs.length>1){
+        let subAngle=angle;
+        subs.forEach(([,sd],si)=>{
+          const subSlice=total>0?(sd.amount/total)*Math.PI*2:0;
+          const alpha=0.6+0.4*(1-si/subs.length);
+          ctx.beginPath(); ctx.moveTo(cx,cy);
+          ctx.arc(cx,cy,outerR,subAngle,subAngle+subSlice); ctx.closePath();
+          ctx.fillStyle=color+'CC';
+          // Alternate shade
+          const shade=si%2===0?color:`${color}88`;
+          ctx.fillStyle=shade;
+          ctx.fill();
+          ctx.strokeStyle='#181825'; ctx.lineWidth=1.5; ctx.stroke();
+          // Inner separator line for sub
+          if(si>0){
+            ctx.beginPath(); ctx.moveTo(cx,cy);
+            ctx.lineTo(cx+Math.cos(subAngle)*outerR, cy+Math.sin(subAngle)*outerR);
+            ctx.strokeStyle='rgba(24,24,37,.8)'; ctx.lineWidth=1; ctx.stroke();
+          }
+          subAngle+=subSlice;
+        });
+      } else {
+        ctx.beginPath(); ctx.moveTo(cx,cy);
+        ctx.arc(cx,cy,outerR,angle,angle+catSlice); ctx.closePath();
+        ctx.fillStyle=color; ctx.fill();
+        ctx.strokeStyle='#181825'; ctx.lineWidth=1.5; ctx.stroke();
+      }
+      angle+=catSlice;
+    });
+
+    // Donut hole
+    ctx.beginPath(); ctx.arc(cx,cy,innerR,0,Math.PI*2);
+    ctx.fillStyle='#181825'; ctx.fill();
+
+    // Center text
+    ctx.fillStyle='#eeeef8'; ctx.textAlign='center';
+    ctx.font='bold 11px DM Mono,monospace';
+    ctx.fillText(fmt.money(total),cx,cy+4);
+  }
+
+  // ─── VIEW EVENTS ──────────────────────────────────────────────
   _attachViewEvents() {
-    switch(this.view) {
+    switch(this.view){
       case 'home':     this._attachHomeEvents();     break;
       case 'search':   this._attachSearchEvents();   break;
       case 'settings': this._attachSettingsEvents(); break;
@@ -1006,62 +1013,80 @@ class App {
   }
 
   _attachHomeEvents() {
+    // Calendar click
     document.querySelectorAll('.cal-day[data-date]').forEach(el=>{
-      el.addEventListener('click', ()=>{
-        this.selected = el.dataset.date;
+      el.addEventListener('click',()=>{
+        this.selected=el.dataset.date;
         this.renderView();
         setTimeout(()=>document.querySelector('.home-bottom')?.scrollTo({top:0,behavior:'smooth'}),50);
       });
     });
-    document.getElementById('prev-month-btn')?.addEventListener('click',()=>{
-      this.calendarMonth--; if(this.calendarMonth<1){this.calendarMonth=12;this.calendarYear--;}
-      this.renderView();
-    });
-    document.getElementById('next-month-btn')?.addEventListener('click',()=>{
-      this.calendarMonth++; if(this.calendarMonth>12){this.calendarMonth=1;this.calendarYear++;}
-      this.renderView();
-    });
+    // Month navigation
+    document.getElementById('prev-month-btn')?.addEventListener('click',()=>this._changeMonth(-1));
+    document.getElementById('next-month-btn')?.addEventListener('click',()=>this._changeMonth(1));
     document.getElementById('goto-today-btn')?.addEventListener('click',()=>{
       const now=new Date();
       this.calendarYear=now.getFullYear(); this.calendarMonth=now.getMonth()+1;
       this.selected=fmt.today(); this.today=fmt.today(); this.renderView();
     });
-    // Single expense card click
-    document.querySelectorAll('.expense-card[data-id]').forEach(el=>{
-      el.addEventListener('click',()=>this.openExpenseModal(el.dataset.id));
-    });
-    // Invoice group toggle
-    document.querySelectorAll('[data-toggle]').forEach(el=>{
-      el.addEventListener('click',()=>{
-        const invNo=el.dataset.toggle;
-        const items=document.getElementById('items-'+invNo);
-        const tog=document.getElementById('toggle-'+invNo);
-        if(items){
-          const open=items.classList.toggle('open');
-          tog?.classList.toggle('open',open);
-        }
-      });
-    });
-    // Invoice group item click (edit individual item)
-    document.querySelectorAll('.inv-group-item[data-id]').forEach(el=>{
-      el.addEventListener('click',e=>{
-        e.stopPropagation();
-        this.openExpenseModal(el.dataset.id);
-      });
+    // Calendar swipe
+    this._attachSwipe(document.getElementById('cal-swipe-wrap'));
+    // Expense/invoice item click → edit (NOT expand)
+    document.querySelectorAll('.expense-card[data-id], .inv-group-item[data-id]').forEach(el=>{
+      el.addEventListener('click',e=>{e.stopPropagation();this.openExpenseModal(el.dataset.id);});
     });
     // Pending badge
     document.getElementById('pending-badge')?.addEventListener('click',()=>this._openPendingModal());
+    // Day panel buttons
+    document.getElementById('add-expense-btn')?.addEventListener('click',()=>this.openExpenseModal(null));
+    document.getElementById('invoice-fetch-btn')?.addEventListener('click',()=>this.openInvoiceImportModal());
+  }
+
+  _changeMonth(delta) {
+    this.calendarMonth+=delta;
+    if(this.calendarMonth<1){this.calendarMonth=12;this.calendarYear--;}
+    if(this.calendarMonth>12){this.calendarMonth=1;this.calendarYear++;}
+    this.renderView();
+  }
+
+  _attachSwipe(el) {
+    if(!el) return;
+    el.addEventListener('touchstart',e=>{
+      this._swipeStartX=e.touches[0].clientX;
+      this._swipeStartY=e.touches[0].clientY;
+    },{passive:true});
+    el.addEventListener('touchend',e=>{
+      if(this._swipeStartX===null) return;
+      const dx=e.changedTouches[0].clientX-this._swipeStartX;
+      const dy=e.changedTouches[0].clientY-this._swipeStartY;
+      if(Math.abs(dx)>Math.abs(dy)&&Math.abs(dx)>40){
+        this._changeMonth(dx<0?1:-1);
+      }
+      this._swipeStartX=null; this._swipeStartY=null;
+    },{passive:true});
   }
 
   _attachSearchEvents() {
     const input=document.getElementById('search-input');
+    const clearBtn=document.getElementById('search-clear');
     if(!input) return;
     let timer;
-    input.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(()=>this._doSearch(input.value),250);});
+    input.addEventListener('input',()=>{
+      clearTimeout(timer);
+      clearBtn?.classList.toggle('hidden',!input.value);
+      timer=setTimeout(()=>this._doSearch(input.value),200);
+    });
+    clearBtn?.addEventListener('click',()=>{
+      input.value='';
+      clearBtn.classList.add('hidden');
+      document.getElementById('search-info').textContent='輸入關鍵字以搜尋';
+      document.getElementById('search-results').innerHTML='';
+    });
     document.getElementById('search-results')?.addEventListener('click',ev=>{
-      const card=ev.target.closest('.expense-card[data-id]');
+      const card=ev.target.closest('[data-id]');
       if(card) this.openExpenseModal(card.dataset.id);
     });
+    // Prevent zoom on focus - handled by CSS font-size:16px
   }
 
   _doSearch(kw) {
@@ -1069,7 +1094,7 @@ class App {
     const info=document.getElementById('search-info');
     const list=document.getElementById('search-results');
     if(!info||!list) return;
-    if(!kw.trim()){info.textContent='輸入關鍵字以搜尋記帳歷史';list.innerHTML='';return;}
+    if(!kw.trim()){info.textContent='輸入關鍵字以搜尋';list.innerHTML='';return;}
     info.textContent=`找到 ${results.length} 筆記錄`;
     list.innerHTML=results.length
       ?results.map(e=>`
@@ -1085,31 +1110,36 @@ class App {
           </div>
           <div class="expense-amount">${fmt.money(e.amount)}</div>
         </div>`).join('')
-      :`<div class="empty-state"><div class="icon">🔎</div><p>找不到符合的記錄</p></div>`;
+      :`<div class="empty-state"><div class="icon">🔎</div><p>找不到</p></div>`;
   }
 
   _attachSettingsEvents() {
+    // Cat tree toggles
     document.querySelectorAll('.cat-toggle').forEach(btn=>{
       btn.addEventListener('click',()=>{
         const ci=btn.dataset.ci;
-        const children=document.getElementById('cat-children-'+ci);
-        const isOpen=children.classList.toggle('open');
-        btn.classList.toggle('open',isOpen);
-        btn.textContent=isOpen?'▼':'▶';
+        const ch=document.getElementById('cat-children-'+ci);
+        const open=ch.classList.toggle('open');
+        btn.classList.toggle('open',open);
+        btn.textContent=open?'▼':'▶';
       });
     });
     document.querySelectorAll('[data-action]').forEach(btn=>{
-      btn.addEventListener('click',()=>{
-        const {action,ci,si}=btn.dataset;
-        this._handleCatAction(action,+ci,si!==undefined?+si:null);
-      });
+      btn.addEventListener('click',()=>this._handleCatAction(btn.dataset.action,+btn.dataset.ci,btn.dataset.si!==undefined?+btn.dataset.si:null));
     });
     document.getElementById('add-parent-cat-btn')?.addEventListener('click',()=>{
-      this._promptCatName('新增大分類','',name=>{
-        this.store.data.categories.push({name,subs:[]});
-        this.store.save(); this.renderView(); this.toast('已新增大分類','success');
+      this._promptCatName('新增大分類','',name=>{this.store.data.categories.push({name,subs:[]});this.store.save();this.renderView();this.toast('已新增大分類','success');});
+    });
+    // Store mapping
+    document.getElementById('add-store-map-btn')?.addEventListener('click',()=>this._openStoreMappingModal(null));
+    document.querySelectorAll('.store-map-del').forEach(btn=>{
+      btn.addEventListener('click',()=>{
+        const si=+btn.dataset.si;
+        this.store.data.storeMapping.splice(si,1);
+        this.store.save(); this.renderView(); this.toast('已刪除','success');
       });
     });
+    // Invoice settings
     document.getElementById('save-invoice-settings-btn')?.addEventListener('click',()=>{
       const s=this.store.data.settings;
       s.invoiceCardNo=document.getElementById('s-cardNo').value.trim();
@@ -1124,65 +1154,46 @@ class App {
       this.store.save(); this.toast('已儲存','success');
     });
     document.getElementById('save-drive-settings-btn')?.addEventListener('click',()=>{
-      const clientId=document.getElementById('s-gClientId').value.trim();
-      this.store.data.settings.googleClientId=clientId;
+      const cid=document.getElementById('s-gClientId').value.trim();
+      this.store.data.settings.googleClientId=cid;
       this.store.save();
-      if(clientId) this.drive.init(clientId).catch(()=>{});
+      if(cid) this.drive.init(cid).catch(()=>{});
       this.toast('已儲存','success');
     });
     document.querySelectorAll('.api-key-toggle').forEach(btn=>{
       btn.addEventListener('click',()=>{
-        const input=document.getElementById(btn.dataset.target);
-        if(!input) return;
-        input.type=input.type==='password'?'text':'password';
-        btn.textContent=input.type==='password'?'👁':'🙈';
+        const inp=document.getElementById(btn.dataset.target);
+        if(!inp) return;
+        inp.type=inp.type==='password'?'text':'password';
+        btn.textContent=inp.type==='password'?'👁':'🙈';
       });
     });
-    // Backup events
     document.getElementById('export-local-btn')?.addEventListener('click',()=>this.exportLocal());
     document.getElementById('import-local-btn')?.addEventListener('click',()=>document.getElementById('import-file-input')?.click());
     document.getElementById('import-file-input')?.addEventListener('change',e=>this.importLocal(e));
     document.getElementById('drive-upload-btn')?.addEventListener('click',()=>this.driveUpload());
     document.getElementById('drive-list-btn')?.addEventListener('click',()=>this.driveList());
     document.getElementById('clear-data-btn')?.addEventListener('click',()=>{
-      if(!confirm('確定要清除所有資料嗎？此操作無法復原！')) return;
-      if(!confirm('再次確認：所有記帳資料將永久清除。')) return;
+      if(!confirm('確定清除所有資料？無法復原！')) return;
+      if(!confirm('再次確認：永久清除所有記帳資料。')) return;
       localStorage.removeItem(STORAGE_KEY);
       this.store.data=this.store._default();
       this.toast('已清除','info'); this.renderView();
     });
   }
 
-  _handleCatAction(action, ci, si) {
+  _handleCatAction(action,ci,si) {
     const cats=this.store.data.categories;
-    if(action==='rename-cat'){
-      this._promptCatName('修改大分類名稱',cats[ci].name,name=>{cats[ci].name=name;this.store.save();this.renderView();this.toast('已更新','success');});
-    } else if(action==='del-cat'){
-      if(!confirm(`確定刪除「${cats[ci].name}」及其所有小分類？`)) return;
-      cats.splice(ci,1); this.store.save(); this.renderView(); this.toast('已刪除','success');
-    } else if(action==='add-sub'){
-      const input=document.getElementById('sub-input-'+ci);
-      const name=input?.value.trim();
-      if(!name){this.toast('請輸入名稱','error');return;}
-      cats[ci].subs.push(name); this.store.save(); this.renderView(); this.toast('已新增','success');
-    } else if(action==='rename-sub'){
-      this._promptCatName('修改小分類名稱',cats[ci].subs[si],name=>{cats[ci].subs[si]=name;this.store.save();this.renderView();this.toast('已更新','success');});
-    } else if(action==='del-sub'){
-      if(!confirm(`確定刪除「${cats[ci].subs[si]}」？`)) return;
-      cats[ci].subs.splice(si,1); this.store.save(); this.renderView(); this.toast('已刪除','success');
-    }
+    if(action==='rename-cat') this._promptCatName('修改大分類',cats[ci].name,name=>{cats[ci].name=name;this.store.save();this.renderView();this.toast('已更新','success');});
+    else if(action==='del-cat'){if(!confirm(`刪除「${cats[ci].name}」？`))return;cats.splice(ci,1);this.store.save();this.renderView();this.toast('已刪除','success');}
+    else if(action==='add-sub'){const inp=document.getElementById('sub-input-'+ci);const n=inp?.value.trim();if(!n){this.toast('請輸入名稱','error');return;}cats[ci].subs.push(n);this.store.save();this.renderView();this.toast('已新增','success');}
+    else if(action==='rename-sub') this._promptCatName('修改小分類',cats[ci].subs[si],name=>{cats[ci].subs[si]=name;this.store.save();this.renderView();this.toast('已更新','success');});
+    else if(action==='del-sub'){if(!confirm(`刪除「${cats[ci].subs[si]}」？`))return;cats[ci].subs.splice(si,1);this.store.save();this.renderView();this.toast('已刪除','success');}
   }
-  _promptCatName(title, defaultVal, callback) {
-    const name=prompt(title,defaultVal);
-    if(name&&name.trim()) callback(name.trim());
-  }
+  _promptCatName(title,def,cb){const n=prompt(title,def);if(n&&n.trim())cb(n.trim());}
 
   _attachStatsEvents() {
-    // Initial render: month mode
-    if(!this.statsCustom) {
-      const exps=this.store.getByMonth(this.statsYear, this.statsMonth);
-      this._renderStats(exps);
-    }
+    this._renderStats(this.store.getByMonth(this.statsYear,this.statsMonth));
     document.getElementById('stats-prev')?.addEventListener('click',()=>{
       this.statsMonth--; if(this.statsMonth<1){this.statsMonth=12;this.statsYear--;}
       this.statsCustom=false;
@@ -1208,113 +1219,180 @@ class App {
       const from=document.getElementById('stats-from')?.value;
       const to=document.getElementById('stats-to')?.value;
       if(!from||!to){this.toast('請選擇日期區間','error');return;}
-      if(from>to){this.toast('起始日期不能晚於結束日期','error');return;}
+      if(from>to){this.toast('起始不能晚於結束','error');return;}
       const exps=this.store.data.expenses.filter(e=>e.date>=from&&e.date<=to);
       document.getElementById('stats-month-label').textContent=`${from} ~ ${to}`;
       this._renderStats(exps);
     });
+    // Sort buttons (delegated, re-render)
+    document.getElementById('stats-content')?.addEventListener('click',e=>{
+      const sortBtn=e.target.closest('.stats-sort-btn');
+      if(sortBtn){
+        this.statsSortMode=sortBtn.dataset.sort;
+        document.querySelectorAll('.stats-sort-btn').forEach(b=>b.classList.toggle('active',b.dataset.sort===this.statsSortMode));
+        // Re-render cat list only
+        const from=document.getElementById('stats-from')?.value||this._statsFromDefault();
+        const to=document.getElementById('stats-to')?.value||fmt.today();
+        const exps=this.statsCustom
+          ?this.store.data.expenses.filter(e=>e.date>=from&&e.date<=to)
+          :this.store.getByMonth(this.statsYear,this.statsMonth);
+        this._renderStats(exps);
+        return;
+      }
+      // Cat accordion toggle
+      const catHeader=e.target.closest('.stats-cat-header');
+      if(catHeader){
+        const catItem=catHeader.closest('.stats-cat-item');
+        const catName=catItem?.dataset.cat;
+        if(!catName) return;
+        const subList=document.getElementById('scat-'+catName.replace(/\s/g,'_'));
+        const tog=catHeader.querySelector('.stats-cat-toggle');
+        if(subList){const open=subList.classList.toggle('open');tog?.classList.toggle('open',open);}
+        return;
+      }
+      // Expense row in stats → edit
+      const expRow=e.target.closest('.stats-expense-row[data-id]');
+      if(expRow) this.openExpenseModal(expRow.dataset.id);
+    });
   }
 
-  // ─── EXPENSE MODAL (full-screen, slide from right) ──────────
-  openExpenseModal(id) {
-    const expense = id ? this.store.data.expenses.find(e=>e.id===id) : null;
-    this._editId   = id||null;
-    const cats     = this.store.data.categories;
-    const isEdit   = !!expense;
-    const e        = expense || { date:this.selected, description:'', store:'', amount:'', category1:'', category2:'', status:'categorized', source:'manual' };
+  // ─── STORE MAPPING MODAL ──────────────────────────────────────
+  _openStoreMappingModal(existingIdx) {
+    const cats=this.store.data.categories;
+    const catOptions=cats.map(c=>`<option value="${c.name}">${c.name}</option>`).join('');
+    const existing=existingIdx!==null?this.store.data.storeMapping[existingIdx]:null;
+    this._openSheet(`
+      <div class="modal-handle"></div>
+      <div class="modal-header">
+        <div class="modal-title">🏪 店家自動分類規則</div>
+        <button class="modal-close" id="modal-close-btn">✕</button>
+      </div>
+      <div class="modal-body" style="gap:10px;">
+        <p style="font-size:11px;color:var(--text2);line-height:1.7;">
+          設定後，當匯入發票資料時，符合店家名稱（支援部分匹配）的消費將自動套用對應分類。
+        </p>
+        <div class="form-group">
+          <label class="form-label">店家名稱（關鍵字）</label>
+          <input class="form-input" id="sm-store" placeholder="例如：全聯、麥當勞、IKEA" value="${existing?.store||''}">
+        </div>
+        <div class="form-row-2">
+          <div class="form-group">
+            <label class="form-label">大分類</label>
+            <select class="form-select" id="sm-cat1">
+              <option value="">-- 選擇 --</option>${catOptions}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">小分類</label>
+            <select class="form-select" id="sm-cat2" disabled>
+              <option value="">-- 選擇 --</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="modal-cancel-btn">取消</button>
+        <button class="btn-primary" id="sm-save-btn">儲存規則</button>
+      </div>`);
+    const sel1=document.getElementById('sm-cat1');
+    const sel2=document.getElementById('sm-cat2');
+    if(existing){sel1.value=existing.cat1;this._populateSelect2(sel1.value,sel2,existing.cat2);}
+    sel1.addEventListener('change',()=>this._populateSelect2(sel1.value,sel2,''));
+    document.getElementById('sm-save-btn')?.addEventListener('click',()=>{
+      const store=document.getElementById('sm-store').value.trim();
+      const cat1=sel1.value;const cat2=sel2.value;
+      if(!store||!cat1){this.toast('請填寫店家名稱與大分類','error');return;}
+      const rule={store,cat1,cat2};
+      if(!this.store.data.storeMapping) this.store.data.storeMapping=[];
+      if(existingIdx!==null) this.store.data.storeMapping[existingIdx]=rule;
+      else this.store.data.storeMapping.push(rule);
+      this.store.save();this.closeModal();this.renderView();this.toast('規則已儲存','success');
+    });
+  }
 
-    // Build category selector circles
-    const allCat2s = cats.flatMap(c=>(c.subs||[]).map(s=>({cat1:c.name, cat2:s})));
-    const catCirclesHtml = [
-      { cat1:'', cat2:'待分類', icon:'📋' },
-      ...allCat2s.map(({cat1,cat2})=>({ cat1, cat2, icon:getCatIcon(cat2) }))
-    ].map(({cat1,cat2,icon})=>`
-      <button class="edit-cat-btn${(e.category2===cat2&&e.category1===cat1)||(!e.category2&&cat2==='待分類'&&e.status==='pending')?' selected':''}" 
-        data-cat1="${cat1}" data-cat2="${cat2}">
-        <div class="edit-cat-circle">${icon}</div>
-        <div class="edit-cat-label">${cat2}</div>
+  _populateSelect2(cat1,sel2,selectedCat2) {
+    const cats=this.store.data.categories;
+    const subs=cats.find(c=>c.name===cat1)?.subs||[];
+    sel2.innerHTML='<option value="">-- 選擇 --</option>'+subs.map(s=>`<option value="${s}" ${s===selectedCat2?'selected':''}>${s}</option>`).join('');
+    sel2.disabled=!subs.length;
+  }
+
+  // ─── EXPENSE MODAL ────────────────────────────────────────────
+  openExpenseModal(id) {
+    const expense=id?this.store.data.expenses.find(e=>e.id===id):null;
+    this._editId=id||null;
+    const cats=this.store.data.categories;
+    const isEdit=!!expense;
+    const e=expense||{date:this.selected,description:'',store:'',amount:'',category1:'',category2:'',status:'categorized',source:'manual'};
+
+    // Two-level: first show cat1 circles, then cat2
+    const cat1CirclesHtml=cats.map((cat,i)=>`
+      <button class="edit-cat-btn${e.category1===cat.name?' selected':''}" data-cat1="${cat.name}" data-cat2="">
+        <div class="edit-cat-circle">${CAT_ICONS[cat.subs?.[0]]||'📁'}</div>
+        <div class="edit-cat-label">${cat.name}</div>
       </button>`).join('');
 
-    // Cat2 options for current cat1
-    const cat1Options = cats.map(c=>`<option value="${c.name}" ${e.category1===c.name?'selected':''}>${c.name}</option>`).join('');
-    const cat2Options = e.category1 ? (cats.find(c=>c.name===e.category1)?.subs||[]).map(s=>`<option value="${s}" ${e.category2===s?'selected':''}>${s}</option>`).join('') : '';
+    const selectedCat=cats.find(c=>c.name===e.category1);
+    const cat2CirclesHtml=selectedCat?(selectedCat.subs||[]).map(sub=>`
+      <button class="edit-cat-btn${e.category2===sub?' selected':''}" data-cat1="${selectedCat.name}" data-cat2="${sub}">
+        <div class="edit-cat-circle">${getCatIcon(sub)}</div>
+        <div class="edit-cat-label">${sub}</div>
+      </button>`).join(''):'';
 
-    // Invoice sibling items
-    const invItems = (isEdit&&e.invoiceNo) ? this.store.getInvoiceItems(e.invoiceNo) : [];
-    const invItemsHtml = invItems.length>1 ? `
+    const invItems=(isEdit&&e.invoiceNo)?this.store.getInvoiceItems(e.invoiceNo):[];
+    const invHtml=invItems.length>1?`
       <div class="inv-items-section">
-        <div class="inv-items-section-title">同張發票品項 · ${e.invoiceNo}</div>
+        <div class="inv-items-section-title">同張發票 · ${e.invoiceNo}</div>
         ${invItems.map(it=>`
           <div class="inv-item-row ${it.id===e.id?'inv-item-current':''}" ${it.id!==e.id?`data-inv-id="${it.id}"`:''}>
             <span class="inv-item-name">${it.description||'(未命名)'}</span>
             <span class="inv-item-amt">${fmt.money(it.amount)}</span>
-            ${it.id===e.id
-              ?`<span class="inv-item-current-badge">本筆</span>`
-              :`<span class="inv-item-cat${it.status==='pending'?' pending':''}">${it.status==='pending'?'待分類':(it.category1||'未分類')}</span>`}
+            ${it.id===e.id?`<span class="inv-item-current-badge">本筆</span>`:`<span class="inv-item-cat${it.status==='pending'?' pending':''}">${it.status==='pending'?'待分類':(it.category1||'未分類')}</span>`}
           </div>`).join('')}
-      </div>` : '';
+      </div>`:'';
 
-    const overlay = document.getElementById('modal-overlay');
-    const content = document.getElementById('modal-content');
-    const backdrop = document.getElementById('modal-backdrop');
+    const overlay=document.getElementById('modal-overlay');
+    const content=document.getElementById('modal-content');
+    const backdrop=document.getElementById('modal-backdrop');
     content.classList.remove('sheet-mode');
-    content.innerHTML = `
+    content.innerHTML=`
       <div class="modal-topbar">
         <button class="modal-topbar-btn" id="modal-close-btn">✕</button>
         <div class="modal-topbar-title">${isEdit?'編輯消費':'新增消費'}</div>
         <button class="modal-topbar-btn confirm" id="modal-save-btn">✓</button>
       </div>
       <div class="modal-body">
-        <!-- Category circles -->
-        <div class="edit-category-row" id="edit-cat-row">${catCirclesHtml}</div>
+        <!-- Level 1: 大分類 -->
+        <div class="cat-level-wrap">
+          <div class="cat-level-label">大分類</div>
+          <div class="edit-category-row" id="cat1-row">${cat1CirclesHtml}</div>
+          <!-- Level 2: 小分類 (shown after cat1 selected) -->
+          <div class="cat-sub-area${selectedCat?'':' hidden'}" id="cat2-area">
+            <div class="cat-level-label" style="padding:6px 8px 2px">小分類</div>
+            <div class="edit-category-row" id="cat2-row">${cat2CirclesHtml}</div>
+          </div>
+        </div>
 
-        <!-- Amount -->
         <div class="edit-amount-display">
           <span class="edit-amount-currency">TWD</span>
           <input class="edit-amount-input" type="number" id="f-amount" placeholder="0"
             value="${e.amount||''}" inputmode="decimal" min="0">
         </div>
 
-        <!-- Field grid -->
         <div class="edit-field-grid">
-          <div class="edit-field">
-            <div class="edit-field-label">日期</div>
-            <input class="edit-field-value" type="date" id="f-date" value="${e.date||this.selected}">
-          </div>
-          <div class="edit-field">
-            <div class="edit-field-label">消費店家</div>
-            <input class="edit-field-value" id="f-store" placeholder="店家名稱" value="${e.store||''}">
-          </div>
-          <div class="edit-field">
-            <div class="edit-field-label">大分類</div>
-            <select class="edit-field-value-select" id="f-cat1">
-              <option value="">-- 選擇 --</option>
-              ${cat1Options}
-            </select>
-          </div>
-          <div class="edit-field">
-            <div class="edit-field-label">小分類</div>
-            <select class="edit-field-value-select" id="f-cat2">
-              <option value="">-- 選擇 --</option>
-              ${cat2Options}
-            </select>
-          </div>
-          ${isEdit&&e.invoiceNo?`<div class="edit-field edit-field-full">
-            <div class="edit-field-label">發票號碼</div>
-            <div class="edit-field-value" style="color:var(--text3)">${e.invoiceNo}</div>
-          </div>`:''}
+          <div class="edit-field"><div class="edit-field-label">日期</div>
+            <input class="edit-field-value" type="date" id="f-date" value="${e.date||this.selected}"></div>
+          <div class="edit-field"><div class="edit-field-label">消費店家</div>
+            <input class="edit-field-value" id="f-store" placeholder="店家名稱" value="${e.store||''}"></div>
+          ${isEdit&&e.invoiceNo?`<div class="edit-field edit-field-full"><div class="edit-field-label">發票號碼</div><div class="edit-field-value" style="color:var(--text3)">${e.invoiceNo}</div></div>`:''}
         </div>
 
-        <!-- Notes / Description -->
         <div class="edit-notes-area">
-          <div class="edit-notes-label">消費項目</div>
+          <div class="edit-notes-label">消費項目說明</div>
           <textarea class="edit-notes-input" id="f-desc" placeholder="請輸入消費項目說明">${e.description||''}</textarea>
         </div>
 
-        <!-- Invoice siblings -->
-        ${invItemsHtml}
-
-        <!-- Delete button -->
+        ${invHtml}
         ${isEdit?`<button class="edit-delete-btn" id="modal-delete-btn">🗑 刪除這筆消費</button>`:''}
       </div>`;
 
@@ -1322,154 +1400,120 @@ class App {
     backdrop.classList.add('visible');
     requestAnimationFrame(()=>content.classList.add('slide-in'));
 
-    // Category circle selection
-    document.querySelectorAll('.edit-cat-btn').forEach(btn=>{
+    // Cat1 selection → show cat2
+    document.querySelectorAll('#cat1-row .edit-cat-btn').forEach(btn=>{
       btn.addEventListener('click',()=>{
-        document.querySelectorAll('.edit-cat-btn').forEach(b=>b.classList.remove('selected'));
+        document.querySelectorAll('#cat1-row .edit-cat-btn').forEach(b=>b.classList.remove('selected'));
         btn.classList.add('selected');
-        const cat1=btn.dataset.cat1, cat2=btn.dataset.cat2;
-        // Also update the dropdowns
-        const sel1=document.getElementById('f-cat1');
-        const sel2=document.getElementById('f-cat2');
-        if(sel1&&cat1) { sel1.value=cat1; this._populateCat2(cat1,cat2); }
+        const cat1=btn.dataset.cat1;
+        const cat=cats.find(c=>c.name===cat1);
+        const area=document.getElementById('cat2-area');
+        const row=document.getElementById('cat2-row');
+        if(cat&&cat.subs?.length){
+          row.innerHTML=cat.subs.map(sub=>`
+            <button class="edit-cat-btn" data-cat1="${cat1}" data-cat2="${sub}">
+              <div class="edit-cat-circle">${getCatIcon(sub)}</div>
+              <div class="edit-cat-label">${sub}</div>
+            </button>`).join('');
+          area.classList.remove('hidden');
+          // Attach cat2 click
+          row.querySelectorAll('.edit-cat-btn').forEach(b=>{
+            b.addEventListener('click',()=>{
+              row.querySelectorAll('.edit-cat-btn').forEach(x=>x.classList.remove('selected'));
+              b.classList.add('selected');
+            });
+          });
+        } else {
+          area.classList.add('hidden');
+        }
+      });
+    });
+    // Existing cat2 selection
+    document.querySelectorAll('#cat2-row .edit-cat-btn').forEach(btn=>{
+      btn.addEventListener('click',()=>{
+        document.querySelectorAll('#cat2-row .edit-cat-btn').forEach(b=>b.classList.remove('selected'));
+        btn.classList.add('selected');
       });
     });
 
-    // Cat1 cascade
-    document.getElementById('f-cat1')?.addEventListener('change',e2=>{
-      this._populateCat2(e2.target.value,'');
-      // Update circle selection
-      this._syncCircleSelection(e2.target.value, document.getElementById('f-cat2')?.value||'');
-    });
-    document.getElementById('f-cat2')?.addEventListener('change',e2=>{
-      this._syncCircleSelection(document.getElementById('f-cat1')?.value||'', e2.target.value);
-    });
-
-    // Invoice item click
+    // Invoice item jump
     document.querySelectorAll('.inv-item-row[data-inv-id]').forEach(row=>{
       row.addEventListener('click',()=>{this.closeModal();this.openExpenseModal(row.dataset.invId);});
     });
 
-    // Close
     document.getElementById('modal-close-btn')?.addEventListener('click',()=>this.closeModal());
     backdrop.addEventListener('click',()=>this.closeModal(),{once:true});
-
-    // Save
-    document.getElementById('modal-save-btn')?.addEventListener('click',()=>this._saveExpense(e, isEdit));
-
-    // Delete
+    document.getElementById('modal-save-btn')?.addEventListener('click',()=>this._saveExpense(e,isEdit));
     document.getElementById('modal-delete-btn')?.addEventListener('click',()=>{
-      if(!confirm('確定刪除這筆消費？')) return;
+      if(!confirm('確定刪除這筆消費？'))return;
       this.store.deleteExpense(this._editId);
-      this.toast('已刪除','success'); this.closeModal(); this.renderView();
+      this.toast('已刪除','success');this.closeModal();this.renderView();
     });
   }
 
-  _populateCat2(cat1, selectedCat2) {
-    const cats = this.store.data.categories;
-    const subs = cats.find(c=>c.name===cat1)?.subs||[];
-    const sel  = document.getElementById('f-cat2');
-    if(!sel) return;
-    sel.innerHTML=`<option value="">-- 選擇 --</option>`+
-      subs.map(s=>`<option value="${s}" ${s===selectedCat2?'selected':''}>${s}</option>`).join('');
-  }
-
-  _syncCircleSelection(cat1, cat2) {
-    document.querySelectorAll('.edit-cat-btn').forEach(btn=>{
-      btn.classList.toggle('selected', btn.dataset.cat1===cat1 && btn.dataset.cat2===cat2);
-    });
-  }
-
-  _saveExpense(e, isEdit) {
-    const date   = document.getElementById('f-date')?.value;
-    const amount = parseFloat(document.getElementById('f-amount')?.value);
-    const desc   = document.getElementById('f-desc')?.value.trim();
-    const store  = document.getElementById('f-store')?.value.trim();
-    const cat1   = document.getElementById('f-cat1')?.value;
-    const cat2   = document.getElementById('f-cat2')?.value;
-
-    if(!date)              { this.toast('請選擇日期','error'); return; }
-    if(isNaN(amount)||amount<=0) { this.toast('請輸入有效金額','error'); return; }
-    if(!desc)              { this.toast('請輸入消費項目','error'); return; }
-
-    const data = { date, amount, description:desc, store, category1:cat1, category2:cat2,
-      status:(cat1&&cat2)?'categorized':(e.status==='pending'?'pending':'categorized'),
-      source:e.source||'manual', invoiceNo:e.invoiceNo||'' };
-
-    if(isEdit) {
-      this.store.updateExpense(this._editId, data);
-      this.toast('已更新','success');
-    } else {
-      this.store.addExpense(data);
-      this.toast('已新增','success');
-      this.selected=date;
-      const d=new Date(date);
-      this.calendarYear=d.getFullYear(); this.calendarMonth=d.getMonth()+1;
-    }
-    this.closeModal(); this.renderView();
+  _saveExpense(e,isEdit) {
+    const date=document.getElementById('f-date')?.value;
+    const amount=parseFloat(document.getElementById('f-amount')?.value);
+    const desc=document.getElementById('f-desc')?.value.trim();
+    const store=document.getElementById('f-store')?.value.trim();
+    const cat1Btn=document.querySelector('#cat1-row .edit-cat-btn.selected');
+    const cat2Btn=document.querySelector('#cat2-row .edit-cat-btn.selected');
+    const cat1=cat1Btn?.dataset.cat1||'';
+    const cat2=cat2Btn?.dataset.cat2||'';
+    if(!date){this.toast('請選擇日期','error');return;}
+    if(isNaN(amount)||amount<=0){this.toast('請輸入有效金額','error');return;}
+    if(!desc){this.toast('請輸入消費項目','error');return;}
+    const data={date,amount,description:desc,store,category1:cat1,category2:cat2,
+      status:cat1?'categorized':'pending',source:e.source||'manual',invoiceNo:e.invoiceNo||''};
+    if(isEdit){this.store.updateExpense(this._editId,data);this.toast('已更新','success');}
+    else{this.store.addExpense(data);this.toast('已新增','success');this.selected=date;
+      const d=new Date(date);this.calendarYear=d.getFullYear();this.calendarMonth=d.getMonth()+1;}
+    this.closeModal();this.renderView();
   }
 
   closeModal() {
-    const content  = document.getElementById('modal-content');
-    const overlay  = document.getElementById('modal-overlay');
-    const backdrop = document.getElementById('modal-backdrop');
+    const content=document.getElementById('modal-content');
+    const overlay=document.getElementById('modal-overlay');
+    const backdrop=document.getElementById('modal-backdrop');
     content.classList.remove('slide-in');
     backdrop.classList.remove('visible');
-    setTimeout(()=>{
-      overlay.classList.add('hidden');
-      content.innerHTML='';
-      content.classList.remove('sheet-mode');
-      this._editId=null;
-    }, 320);
+    setTimeout(()=>{overlay.classList.add('hidden');content.innerHTML='';content.classList.remove('sheet-mode');this._editId=null;},300);
   }
 
-  // ─── PENDING BATCH MODAL ───────────────────────────────────
+  // ─── PENDING MODAL ────────────────────────────────────────────
   _openPendingModal() {
-    const { calendarYear:y, calendarMonth:m } = this;
-    const pending = this.store.getByMonth(y,m)
-      .filter(e=>e.status==='pending')
-      .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
-    if(!pending.length){ this.toast('本月沒有待分類項目','info'); return; }
-    const cats = this.store.data.categories;
-    const catOptions = cats.map(c=>`<option value="${c.name}">${c.name}</option>`).join('');
-    const rows = pending.map(e=>`
-      <div class="pending-row" data-pid="${e.id}">
-        <div class="pending-row-top">
-          <div class="pending-desc">${e.description||'(未命名)'}</div>
-          <div class="pending-amt">${fmt.money(e.amount)}</div>
-        </div>
-        <div class="pending-row-meta">
-          <span class="pending-date">${fmt.date(e.date)}</span>
-          ${e.store?`<span class="pending-store">🏪 ${e.store}</span>`:''}
-        </div>
-        <div class="pending-row-selects">
-          <select class="form-select form-select-sm pending-cat1" data-pid="${e.id}">
-            <option value="">大分類</option>${catOptions}
-          </select>
-          <select class="form-select form-select-sm pending-cat2" data-pid="${e.id}" disabled>
-            <option value="">小分類</option>
-          </select>
-        </div>
-      </div>`).join('');
-
+    const {calendarYear:y,calendarMonth:m}=this;
+    const pending=this.store.getByMonth(y,m).filter(e=>e.status==='pending').sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+    if(!pending.length){this.toast('本月沒有待分類項目','info');return;}
+    const cats=this.store.data.categories;
+    const catOptions=cats.map(c=>`<option value="${c.name}">${c.name}</option>`).join('');
     this._openSheet(`
       <div class="modal-handle"></div>
       <div class="modal-header">
         <div class="modal-title">待分類 (${pending.length} 筆)</div>
         <button class="modal-close" id="modal-close-btn">✕</button>
       </div>
-      <div class="modal-body-scroll" style="max-height:62dvh;">
-        <div style="font-size:11px;color:var(--text3);margin-bottom:8px;">為每筆選擇分類後，點「儲存所有分類」</div>
-        <div id="pending-list" style="display:flex;flex-direction:column;gap:9px;">${rows}</div>
+      <div class="modal-body-scroll">
+        <div style="font-size:10px;color:var(--text3);margin-bottom:7px;">為每筆選擇分類後，點「儲存所有分類」一次完成</div>
+        <div id="pending-list" style="display:flex;flex-direction:column;gap:8px;">
+          ${pending.map(e=>`
+            <div class="pending-row" data-pid="${e.id}">
+              <div class="pending-row-top"><div class="pending-desc">${e.description||'(未命名)'}</div><div class="pending-amt">${fmt.money(e.amount)}</div></div>
+              <div class="pending-row-meta"><span class="pending-date">${fmt.date(e.date)}</span>${e.store?`<span class="pending-store">🏪 ${e.store}</span>`:''}</div>
+              <div class="pending-row-selects">
+                <select class="form-select pending-cat1" data-pid="${e.id}"><option value="">大分類</option>${catOptions}</select>
+                <select class="form-select pending-cat2" data-pid="${e.id}" disabled><option value="">小分類</option></select>
+              </div>
+            </div>`).join('')}
+        </div>
       </div>
       <div class="modal-footer">
         <button class="btn-secondary" id="modal-cancel-btn">取消</button>
         <button class="btn-primary" id="pending-save-all-btn">儲存所有分類</button>
       </div>`);
-
     document.querySelectorAll('.pending-cat1').forEach(sel=>{
       sel.addEventListener('change',()=>{
-        const pid=sel.dataset.pid, cat1=sel.value;
+        const pid=sel.dataset.pid,cat1=sel.value;
         const sel2=document.querySelector(`.pending-cat2[data-pid="${pid}"]`);
         const subs=cats.find(c=>c.name===cat1)?.subs||[];
         sel2.innerHTML='<option value="">小分類</option>'+subs.map(s=>`<option value="${s}">${s}</option>`).join('');
@@ -1486,78 +1530,65 @@ class App {
         this.store.updateExpense(pid,{category1:cat1,category2:cat2,status:'categorized'});
         saved++;
       });
-      this.closeModal(); this.toast(`已更新 ${saved} 筆分類`,'success'); this.renderView();
+      this.closeModal();this.toast(`已更新 ${saved} 筆分類`,'success');this.renderView();
     });
   }
 
-  // ─── INVOICE IMPORT MODAL ──────────────────────────────────
+  // ─── INVOICE IMPORT ───────────────────────────────────────────
   openInvoiceImportModal() {
     this._openSheet(`
       <div class="modal-handle"></div>
-      <div class="modal-header">
-        <div class="modal-title">🧾 發票匯入</div>
-        <button class="modal-close" id="modal-close-btn">✕</button>
-      </div>
-      <div class="modal-body" style="gap:10px;">
-        <p style="font-size:12px;color:var(--text2);line-height:1.7;">選擇匯入方式。未申請 API 可使用 CSV 匯入。</p>
+      <div class="modal-header"><div class="modal-title">🧾 發票匯入</div><button class="modal-close" id="modal-close-btn">✕</button></div>
+      <div class="modal-body" style="gap:9px;">
+        <p style="font-size:11px;color:var(--text2);line-height:1.6;">選擇匯入方式</p>
         <div class="import-choice-card" id="choice-csv">
           <div class="import-choice-icon">📂</div>
-          <div class="import-choice-info">
-            <div class="import-choice-title">匯入 CSV 檔案</div>
-            <div class="import-choice-sub">從財政部平台下載的 CSV（免 API）</div>
-          </div>
+          <div><div class="import-choice-title">匯入 CSV 檔案</div><div class="import-choice-sub">從財政部平台下載的 CSV（免 API）</div></div>
           <div class="import-choice-arrow">›</div>
         </div>
         <div class="import-choice-card" id="choice-api">
           <div class="import-choice-icon">☁️</div>
-          <div class="import-choice-info">
-            <div class="import-choice-title">財政部 API 查詢</div>
-            <div class="import-choice-sub">需設定 AppID / API Key（近 90 天）</div>
-          </div>
+          <div><div class="import-choice-title">財政部 API 查詢</div><div class="import-choice-sub">需設定 AppID / API Key</div></div>
           <div class="import-choice-arrow">›</div>
         </div>
-        <div style="background:var(--bg3);border-radius:9px;padding:11px 13px;font-size:11px;color:var(--text3);line-height:1.8;">
-          📋 <strong style="color:var(--text2)">如何下載 CSV？</strong><br>
-          登入財政部電子發票平台 → 雲端發票 → 消費明細下載 → 選月份下載
-        </div>
       </div>`);
-    document.getElementById('choice-csv')?.addEventListener('click',()=>{
-      this.closeModal();
-      setTimeout(()=>document.getElementById('csv-invoice-input')?.click(), 350);
-    });
-    document.getElementById('choice-api')?.addEventListener('click',()=>{
-      this.closeModal(); this._fetchInvoicesApi();
-    });
+    document.getElementById('choice-csv')?.addEventListener('click',()=>{this.closeModal();setTimeout(()=>document.getElementById('csv-invoice-input')?.click(),350);});
+    document.getElementById('choice-api')?.addEventListener('click',()=>{this.closeModal();this._fetchInvoicesApi();});
   }
 
-  // Helper: open sheet-mode modal
   _openSheet(html) {
-    const overlay  = document.getElementById('modal-overlay');
-    const content  = document.getElementById('modal-content');
-    const backdrop = document.getElementById('modal-backdrop');
+    const overlay=document.getElementById('modal-overlay');
+    const content=document.getElementById('modal-content');
+    const backdrop=document.getElementById('modal-backdrop');
     content.classList.add('sheet-mode');
-    content.innerHTML = html;
+    content.innerHTML=html;
     overlay.classList.remove('hidden');
     backdrop.classList.add('visible');
     requestAnimationFrame(()=>content.classList.add('slide-in'));
-    ['modal-close-btn','modal-cancel-btn'].forEach(id=>{
-      document.getElementById(id)?.addEventListener('click',()=>this.closeModal());
-    });
-    backdrop.addEventListener('click',e=>{
-      if(e.target===backdrop) this.closeModal();
-    },{once:true});
+    ['modal-close-btn','modal-cancel-btn'].forEach(id=>document.getElementById(id)?.addEventListener('click',()=>this.closeModal()));
+    backdrop.addEventListener('click',e=>{if(e.target===backdrop)this.closeModal();},{once:true});
   }
 
-  // ─── CSV IMPORT ─────────────────────────────────────────────
+  // ─── Apply store mapping to imported items ────────────────────
+  _applyStoreMapping(storeNameRaw) {
+    const rules=this.store.data.storeMapping||[];
+    for(const rule of rules){
+      if(storeNameRaw.toLowerCase().includes(rule.store.toLowerCase())){
+        return {cat1:rule.cat1,cat2:rule.cat2};
+      }
+    }
+    return {cat1:'',cat2:''};
+  }
+
   _handleCsvFile(event) {
     const file=event.target.files[0]; if(!file) return;
     const reader=new FileReader();
     reader.onload=e=>{
       try {
         const rows=this.csvParser.parse(e.target.result);
-        if(!rows.length){this.toast('CSV 中沒有找到有效資料','error');return;}
+        if(!rows.length){this.toast('CSV 中沒有有效資料','error');return;}
         this._showCsvPreviewModal(rows);
-      } catch(err){ this.toast('CSV 解析失敗：'+err.message,'error'); }
+      } catch(err){this.toast('CSV 解析失敗：'+err.message,'error');}
     };
     reader.readAsText(file,'utf-8');
     event.target.value='';
@@ -1568,46 +1599,32 @@ class App {
     const newRows=rows.filter(r=>!this.store.isInvoiceImported(r.invoiceNo+'_'+r.description));
     const skipCount=rows.length-newRows.length;
     const invoiceHTML=groups.slice(0,20).map(g=>{
-      const invTotal=g.items.reduce((s,r)=>s+r.amount,0);
-      const alreadyImported=g.items.every(r=>this.store.isInvoiceImported(r.invoiceNo+'_'+r.description));
-      return `<div class="csv-invoice-group${alreadyImported?' already-imported':''}">
-        <div class="csv-inv-header">
-          <span class="csv-inv-no">${g.invoiceNo}</span>
-          <span class="csv-inv-store">${g.store}</span>
-          <span class="csv-inv-total">$${invTotal.toLocaleString()}</span>
-          ${alreadyImported?'<span class="csv-inv-dup">已匯入</span>':''}
-        </div>
+      const tot=g.items.reduce((s,r)=>s+r.amount,0);
+      const dup=g.items.every(r=>this.store.isInvoiceImported(r.invoiceNo+'_'+r.description));
+      return `<div class="csv-invoice-group${dup?' already-imported':''}">
+        <div class="csv-inv-header"><span class="csv-inv-no">${g.invoiceNo}</span><span class="csv-inv-store">${g.store}</span><span class="csv-inv-total">$${tot.toLocaleString()}</span>${dup?'<span class="csv-inv-dup">已匯入</span>':''}</div>
         <div class="csv-inv-date">${g.date}</div>
-        <div class="csv-inv-items">
-          ${g.items.map(r=>`<div class="csv-inv-item"><span class="csv-inv-item-name">${r.description}</span><span class="csv-inv-item-amt">$${r.amount.toLocaleString()}</span></div>`).join('')}
-        </div>
+        <div class="csv-inv-items">${g.items.map(r=>`<div class="csv-inv-item"><span class="csv-inv-item-name">${r.description}</span><span class="csv-inv-item-amt">$${r.amount.toLocaleString()}</span></div>`).join('')}</div>
       </div>`;
     }).join('');
-
     this._openSheet(`
       <div class="modal-handle"></div>
-      <div class="modal-header">
-        <div class="modal-title">📋 發票明細預覽</div>
-        <button class="modal-close" id="modal-close-btn">✕</button>
-      </div>
+      <div class="modal-header"><div class="modal-title">📋 發票預覽</div><button class="modal-close" id="modal-close-btn">✕</button></div>
       <div class="modal-body" style="padding-bottom:0;">
         <div class="csv-summary">
           <div><div class="csv-summary-num">${rows.length}</div><div class="csv-summary-label">總品項</div></div>
-          <div><div class="csv-summary-num">${groups.length}</div><div class="csv-summary-label">張發票</div></div>
+          <div><div class="csv-summary-num">${groups.length}</div><div class="csv-summary-label">發票</div></div>
           <div><div class="csv-summary-num" style="color:var(--amber)">$${rows.reduce((s,r)=>s+r.amount,0).toLocaleString()}</div><div class="csv-summary-label">總金額</div></div>
           <div><div class="csv-summary-num" style="color:${newRows.length>0?'var(--green)':'var(--text3)'}">${newRows.length}</div><div class="csv-summary-label">待匯入</div></div>
         </div>
-        ${skipCount>0?`<div class="csv-skip-note">⚠️ ${skipCount} 筆已匯入過，將略過</div>`:''}
-        <div style="max-height:340px;overflow-y:auto;margin:0 -16px;padding:0 16px 16px;">${invoiceHTML}${groups.length>20?`<div style="text-align:center;font-size:11px;color:var(--text3);padding:7px;">...還有 ${groups.length-20} 張</div>`:''}</div>
+        ${skipCount>0?`<div class="csv-skip-note">⚠ ${skipCount} 筆已匯入，將略過</div>`:''}
+        <div style="max-height:300px;overflow-y:auto;margin:0 -14px;padding:0 14px 14px;">${invoiceHTML}</div>
       </div>
       <div class="modal-footer">
         <button class="btn-secondary" id="modal-cancel-btn">取消</button>
-        <button class="btn-primary" id="csv-confirm-btn" ${newRows.length===0?'disabled style="opacity:.5;"':''}>匯入 ${newRows.length} 筆</button>
+        <button class="btn-primary" id="csv-confirm-btn" ${newRows.length===0?'disabled':''}>匯入 ${newRows.length} 筆</button>
       </div>`);
-
-    document.getElementById('csv-confirm-btn')?.addEventListener('click',()=>{
-      if(!newRows.length) return; this._importCsvRows(newRows);
-    });
+    document.getElementById('csv-confirm-btn')?.addEventListener('click',()=>{if(newRows.length)this._importCsvRows(newRows);});
   }
 
   _importCsvRows(rows) {
@@ -1615,110 +1632,106 @@ class App {
     for(const r of rows){
       const key=r.invoiceNo+'_'+r.description;
       if(this.store.isInvoiceImported(key)) continue;
-      this.store.addExpense({ date:r.date, amount:r.amount, description:r.description, store:r.store, category1:'', category2:'', status:'pending', source:'invoice', invoiceNo:r.invoiceNo });
-      this.store.markInvoiceImported(key); imported++;
+      const mapped=this._applyStoreMapping(r.store);
+      this.store.addExpense({date:r.date,amount:r.amount,description:r.description,store:r.store,
+        category1:mapped.cat1,category2:mapped.cat2,
+        status:mapped.cat1?'categorized':'pending',source:'invoice',invoiceNo:r.invoiceNo});
+      this.store.markInvoiceImported(key);imported++;
     }
-    this.closeModal(); this.toast(`✅ 已匯入 ${imported} 筆發票明細`,'success');
-    if(rows.length>0&&rows[0].date){
-      const d=new Date(rows[0].date);
-      this.calendarYear=d.getFullYear(); this.calendarMonth=d.getMonth()+1; this.selected=rows[0].date;
-    }
+    this.closeModal();this.toast(`✅ 已匯入 ${imported} 筆發票明細`,'success');
+    if(rows.length>0&&rows[0].date){const d=new Date(rows[0].date);this.calendarYear=d.getFullYear();this.calendarMonth=d.getMonth()+1;this.selected=rows[0].date;}
     this.renderView();
   }
 
-  // ─── API INVOICE FETCH ─────────────────────────────────────
   async _fetchInvoicesApi() {
-    this.toast('連線財政部 API...','info');
+    this.toast('連線財政部 API…','info');
     try {
-      const end=new Date(), start=new Date(end); start.setDate(start.getDate()-90);
-      const fmt6=d=>`${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
-      const result=await this.invoice.fetchInvoices(this.store.data.settings,fmt6(start),fmt6(end));
-      const invList=result.details||result.invoiceList||[];
+      const end=new Date(),start=new Date(end);start.setDate(start.getDate()-90);
+      const f6=d=>`${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
+      const result=await this.invoice.fetchInvoices(this.store.data.settings,f6(start),f6(end));
+      const list=result.details||result.invoiceList||[];
       let imported=0;
-      for(const inv of invList){
-        const invNo=inv.invNum||inv.invoiceNumber||'';
-        if(!invNo||this.store.isInvoiceImported(invNo)) continue;
+      for(const inv of list){
+        const no=inv.invNum||inv.invoiceNumber||'';
+        if(!no||this.store.isInvoiceImported(no)) continue;
         const rawDate=inv.invDate||inv.invoiceDate||'';
-        const dateStr=this.invoice.parseInvoiceDate(rawDate.replace(/\//g,''));
-        this.store.addExpense({ date:dateStr||fmt.today(), amount:Number(inv.amount||inv.invAmount||0), description:inv.sellerName||`發票 ${invNo}`, store:inv.sellerName||'', category1:'', category2:'', status:'pending', source:'invoice', invoiceNo:invNo });
-        this.store.markInvoiceImported(invNo); imported++;
+        const ds=this.invoice.parseInvoiceDate(rawDate.replace(/\//g,''));
+        const mapped=this._applyStoreMapping(inv.sellerName||'');
+        this.store.addExpense({date:ds||fmt.today(),amount:Number(inv.amount||inv.invAmount||0),
+          description:inv.sellerName||`發票 ${no}`,store:inv.sellerName||'',
+          category1:mapped.cat1,category2:mapped.cat2,
+          status:mapped.cat1?'categorized':'pending',source:'invoice',invoiceNo:no});
+        this.store.markInvoiceImported(no);imported++;
       }
       this.toast(imported>0?`已匯入 ${imported} 張新發票`:'沒有新的發票',imported>0?'success':'info');
       if(imported>0) this.renderView();
-    } catch(err){ this.toast(`失敗：${err.message}`,'error'); }
+    } catch(err){this.toast(`失敗：${err.message}`,'error');}
   }
 
-  // ─── BACKUP ────────────────────────────────────────────────
+  // ─── BACKUP ───────────────────────────────────────────────────
   exportLocal() {
-    const data=this.store.export(); data._exportedAt=new Date().toISOString();
+    const data=this.store.export();data._exportedAt=new Date().toISOString();
     const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a'); a.href=url; a.download=`cost-record-backup-${fmt.today()}.json`; a.click();
-    URL.revokeObjectURL(url); this.toast('已匯出備份','success');
+    const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;
+    a.download=`cost-record-backup-${fmt.today()}.json`;a.click();URL.revokeObjectURL(url);
+    this.toast('已匯出備份','success');
   }
-
   importLocal(event) {
     const file=event.target.files[0]; if(!file) return;
     const reader=new FileReader();
     reader.onload=e=>{
       try {
         const raw=JSON.parse(e.target.result);
-        const preview=(raw.expenses||[]).slice(-5).reverse();
-        const msg=`備份包含 ${(raw.expenses||[]).length} 筆記錄\n最近5筆：\n`+preview.map(ex=>`• ${ex.date} ${ex.description} ${ex.amount}`).join('\n')+'\n\n確定匯入？';
+        const msg=`備份包含 ${(raw.expenses||[]).length} 筆記錄\n確定匯入？`;
         if(!confirm(msg)) return;
-        this.store.import(raw); this.toast('備份匯入成功','success'); this.renderView();
-      } catch(err){ this.toast('匯入失敗：'+err.message,'error'); }
+        this.store.import(raw);this.toast('備份匯入成功','success');this.renderView();
+      } catch(err){this.toast('匯入失敗：'+err.message,'error');}
     };
-    reader.readAsText(file); event.target.value='';
+    reader.readAsText(file);event.target.value='';
   }
-
   async driveUpload() {
     const btn=document.getElementById('drive-upload-btn');
-    if(btn){btn.textContent='上傳中...';btn.disabled=true;}
+    if(btn){btn.textContent='上傳中…';btn.disabled=true;}
     try {
       await this.drive.init(this.store.data.settings.googleClientId);
-      const data=this.store.export(); data._exportedAt=new Date().toISOString();
+      const data=this.store.export();data._exportedAt=new Date().toISOString();
       await this.drive.uploadBackup(data);
-      this.store.data.lastSync=new Date().toLocaleString('zh-TW'); this.store.save();
-      this.toast('已上傳至 Google Drive','success'); this.renderView();
-    } catch(err){ this.toast('上傳失敗：'+err.message,'error');
-    } finally { if(btn){btn.textContent='☁️ 上傳';btn.disabled=false;} }
+      this.store.data.lastSync=new Date().toLocaleString('zh-TW');this.store.save();
+      this.toast('已上傳至 Google Drive','success');this.renderView();
+    } catch(err){this.toast('上傳失敗：'+err.message,'error');}
+    finally{if(btn){btn.textContent='☁️ 上傳備份';btn.disabled=false;}}
   }
-
   async driveList() {
     const btn=document.getElementById('drive-list-btn');
-    if(btn){btn.textContent='載入中...';btn.disabled=true;}
+    if(btn){btn.textContent='載入中…';btn.disabled=true;}
     const listEl=document.getElementById('drive-backup-list');
     try {
       await this.drive.init(this.store.data.settings.googleClientId);
       const files=await this.drive.listBackups();
       if(!listEl) return;
-      if(!files.length){listEl.innerHTML='<p style="font-size:11px;color:var(--text3);padding:6px 0">尚無雲端備份</p>';return;}
+      if(!files.length){listEl.innerHTML='<p style="font-size:10px;color:var(--text3);">尚無雲端備份</p>';return;}
       listEl.innerHTML=files.slice(0,5).map(f=>`
         <div class="backup-item">
-          <div class="backup-item-info">
-            <div class="backup-item-name">${f.name}</div>
-            <div class="backup-item-date">${new Date(f.modifiedTime).toLocaleString('zh-TW')}</div>
-          </div>
+          <div class="backup-item-info"><div class="backup-item-name">${f.name}</div><div class="backup-item-date">${new Date(f.modifiedTime).toLocaleString('zh-TW')}</div></div>
           <button class="backup-item-btn" data-file-id="${f.id}">匯入</button>
         </div>`).join('');
       listEl.querySelectorAll('.backup-item-btn').forEach(b=>{
         b.addEventListener('click',async()=>{
-          if(!confirm('確定從雲端匯入此備份？本機資料將被覆蓋。')) return;
-          b.textContent='載入中...'; b.disabled=true;
+          if(!confirm('確定從雲端匯入此備份？本機資料將被覆蓋。'))return;
+          b.textContent='載入中…';b.disabled=true;
           try {
             const data=await this.drive.downloadBackup(b.dataset.fileId);
             if(!confirm(`備份包含 ${(data.expenses||[]).length} 筆記錄\n確定匯入？`)){b.textContent='匯入';b.disabled=false;return;}
-            this.store.import(data); this.toast('已從 Drive 匯入','success'); this.renderView();
-          } catch(err){ this.toast('匯入失敗：'+err.message,'error');b.textContent='匯入';b.disabled=false; }
+            this.store.import(data);this.toast('已從 Drive 匯入','success');this.renderView();
+          } catch(err){this.toast('匯入失敗：'+err.message,'error');b.textContent='匯入';b.disabled=false;}
         });
       });
-    } catch(err){ this.toast('載入失敗：'+err.message,'error');
-    } finally { if(btn){btn.textContent='📂 備份清單';btn.disabled=false;} }
+    } catch(err){this.toast('載入失敗：'+err.message,'error');}
+    finally{if(btn){btn.textContent='📂 備份清單';btn.disabled=false;}}
   }
 
-  // ─── TOAST ─────────────────────────────────────────────────
-  toast(msg, type='info') {
+  // ─── TOAST ────────────────────────────────────────────────────
+  toast(msg,type='info') {
     const el=document.getElementById('toast'); if(!el) return;
     el.textContent=msg; el.className=`show ${type}`;
     clearTimeout(this._toastTimer);
@@ -1727,7 +1740,4 @@ class App {
 }
 
 // ── BOOT ──────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
-  window._app = new App();
-  window._app.init();
-});
+document.addEventListener('DOMContentLoaded',()=>{window._app=new App();window._app.init();});
