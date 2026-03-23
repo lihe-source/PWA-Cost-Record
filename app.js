@@ -470,6 +470,7 @@ class App {
     this._editId = null;
     this._swipeStartX = null;
     this._swipeStartY = null;
+    this._swipeCooling = false;
     this._isDarkMode = localStorage.getItem('theme') !== 'light';
   }
 
@@ -1103,8 +1104,7 @@ class App {
       this.calendarYear=now.getFullYear(); this.calendarMonth=now.getMonth()+1;
       this.selected=fmt.today(); this.today=fmt.today(); this.renderView();
     });
-    // Calendar swipe
-    this._attachSwipe(document.getElementById('cal-swipe-wrap'));
+    // Unified swipe (home-top area only, with cooldown)
     // ref-card: single→edit, group→open group detail sheet
     document.querySelectorAll('.ref-card[data-id]').forEach(el=>{
       el.addEventListener('click',e=>{e.stopPropagation();this.openExpenseModal(el.dataset.id);});
@@ -1147,44 +1147,36 @@ class App {
   }
 
   _attachHomeSwipe(el) {
-    // Home-wide swipe for prev/next month — only trigger from left/right edges or fast swipe
+    // Single swipe handler for month navigation with cooldown guard
     if(!el) return;
-    let sx=null, sy=null;
+    let sx=null, sy=null, fired=false;
+    const COOLDOWN = 500; // ms between month changes
     el.addEventListener('touchstart', e=>{
+      if(this._swipeCooling) return; // ignore start if cooldown active
       sx = e.touches[0].clientX;
       sy = e.touches[0].clientY;
+      fired = false;
+    },{passive:true});
+    el.addEventListener('touchmove', e=>{
+      // Prevent horizontal overscroll but allow vertical scroll
     },{passive:true});
     el.addEventListener('touchend', e=>{
-      if(sx===null) return;
+      if(sx===null || fired || this._swipeCooling) return;
       const dx = e.changedTouches[0].clientX - sx;
       const dy = e.changedTouches[0].clientY - sy;
-      // Only trigger on mostly-horizontal swipe from near edge (within 30px of screen edge)
-      // OR fast wide swipe (>120px horizontal)
-      const isEdgeSwipe = sx < 30 || sx > window.innerWidth - 30;
-      const isWideSwipe = Math.abs(dx) > 120 && Math.abs(dx) > Math.abs(dy) * 2;
-      if((isEdgeSwipe || isWideSwipe) && Math.abs(dx) > Math.abs(dy)) {
+      const absDx = Math.abs(dx), absDy = Math.abs(dy);
+      // Require: clearly horizontal (dx > 2*dy) and minimum 50px
+      if(absDx > 50 && absDx > absDy * 2){
+        fired = true;
+        this._swipeCooling = true;
         this._changeMonth(dx < 0 ? 1 : -1);
+        setTimeout(()=>{ this._swipeCooling = false; }, COOLDOWN);
       }
       sx = null; sy = null;
     },{passive:true});
   }
 
-  _attachSwipe(el) {
-    if(!el) return;
-    el.addEventListener('touchstart',e=>{
-      this._swipeStartX=e.touches[0].clientX;
-      this._swipeStartY=e.touches[0].clientY;
-    },{passive:true});
-    el.addEventListener('touchend',e=>{
-      if(this._swipeStartX===null) return;
-      const dx=e.changedTouches[0].clientX-this._swipeStartX;
-      const dy=e.changedTouches[0].clientY-this._swipeStartY;
-      if(Math.abs(dx)>Math.abs(dy)&&Math.abs(dx)>40){
-        this._changeMonth(dx<0?1:-1);
-      }
-      this._swipeStartX=null; this._swipeStartY=null;
-    },{passive:true});
-  }
+  // _attachSwipe removed in V1.0 (unified into _attachHomeSwipe)
 
   _attachSearchEvents() {
     const input=document.getElementById('search-input');
