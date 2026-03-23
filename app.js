@@ -1,5 +1,5 @@
 /* ─────────────────────────────────────────────────────────────
-   Cost Record PWA — app.js  V0.6
+   Cost Record PWA — app.js  V0.7
    Modules: DataStore · InvoiceService · DriveService · App
 ───────────────────────────────────────────────────────────── */
 'use strict';
@@ -464,7 +464,8 @@ class App {
     this.statsYear  = new Date().getFullYear();
     this.statsMonth = new Date().getMonth()+1;
     this.statsCustom = false;
-    this.statsSortMode = 'amount'; // 'amount' | 'date'
+    this.statsSortMode = 'amount-desc'; // 'amount-desc'|'amount-asc'|'date-desc'|'date-asc'
+    this._statsOpenCats = new Set(); // preserve expanded state across sorts
     this._toastTimer = null;
     this._editId = null;
     this._swipeStartX = null;
@@ -524,7 +525,7 @@ class App {
   renderView() {
     const main=document.getElementById('main-content');
     const h1=document.querySelector('#app-header h1');
-    main.classList.toggle('home-mode',this.view==='home');
+    main.classList.remove('home-mode'); // no split layout in V0.7
     switch(this.view) {
       case 'home':     main.innerHTML=this._buildHome();     h1.textContent='記帳本'; break;
       case 'search':   main.innerHTML=this._buildSearch();   h1.textContent='搜尋';   break;
@@ -551,7 +552,8 @@ class App {
       :`<span style="color:var(--text2)">${pending}</span>`;
     const groups=this._groupExpenses(day);
     return `
-      <div class="home-top">
+      <div class="home-wrap">
+        <!-- Month Nav -->
         <div class="month-nav">
           <div class="month-nav-title">${fmt.monthLabel(y,m)}</div>
           <div class="month-nav-btns">
@@ -560,31 +562,36 @@ class App {
             <button class="icon-btn" id="next-month-btn">›</button>
           </div>
         </div>
+        <!-- Calendar (swipeable) -->
         <div class="cal-swipe-wrap" id="cal-swipe-wrap">
           <div class="calendar-wrap">${this._buildCalendar(y,m,datesSet)}</div>
         </div>
+        <!-- Month Summary -->
         <div class="month-summary">
           <div class="month-stats">
-            <div class="stat-item"><div class="stat-label">總支出</div><div class="stat-value big">${fmt.money(total)}</div></div>
+            <div class="stat-item"><div class="stat-label">當月支出</div><div class="stat-value big">${fmt.money(total)}</div></div>
             <div class="stat-item"><div class="stat-label">筆數</div><div class="stat-value">${monthly.length}</div></div>
-            <div class="stat-item"><div class="stat-label">待分類 <span style="font-size:7px;color:var(--amber)">↑點</span></div><div class="stat-value">${pendingEl}</div></div>
+            <div class="stat-item"><div class="stat-label">待分類</div><div class="stat-value">${pendingEl}</div></div>
           </div>
-          ${catEntries.length?`<div class="cat-breakdown">${catEntries.map(([name,amt])=>`
+          ${catEntries.length?`<div class="cat-breakdown">${catEntries.slice(0,3).map(([name,amt])=>`
             <div class="cat-row">
               <div class="cat-row-name">${name}</div>
               <div class="cat-row-bar-wrap"><div class="cat-row-bar" style="width:${Math.round((amt/total)*100)}%"></div></div>
               <div class="cat-row-amount">${fmt.money(amt)}</div>
             </div>`).join('')}</div>`:''}
         </div>
-      </div>
-      <div class="home-bottom">
+        <!-- Day header -->
         <div class="day-panel-header">
-          <div class="day-panel-title">${fmt.date(this.selected)}${dayTotal>0?`<span class="day-total-amt">${fmt.money(dayTotal)}</span>`:''}</div>
-          <div style="display:flex;gap:5px;align-items:center">
+          <div class="day-panel-title">
+            ${fmt.date(this.selected)}
+            ${dayTotal>0?`<span class="day-total-amt">${fmt.money(dayTotal)}</span>`:''}
+          </div>
+          <div style="display:flex;gap:5px;">
             <button class="btn-day-action btn-import" id="invoice-fetch-btn">🧾 發票</button>
             <button class="btn-day-action btn-add" id="add-expense-btn">＋ 記帳</button>
           </div>
         </div>
+        <!-- Expense list -->
         <div class="expense-list">
           ${groups.length
             ?groups.map(g=>g.type==='invoice-group'?this._buildGroupCard(g):this._buildSingleCard(g)).join('')
@@ -592,6 +599,7 @@ class App {
         </div>
       </div>`;
   }
+
 
   _groupExpenses(expenses) {
     const result=[],invMap=new Map();
@@ -614,46 +622,46 @@ class App {
     const total=g.items.reduce((s,i)=>s+Number(i.amount||0),0);
     const pendingN=g.items.filter(i=>i.status==='pending').length;
     const cats=[...new Set(g.items.filter(i=>i.category1).map(i=>i.category1))];
+    const first=g.items[0];
+    const moreCount=g.items.length-1;
     return `
-      <div class="inv-group-card">
-        <div class="inv-group-header">
-          <div class="expense-cat-icon">${this._storeIcon(g.store)}</div>
-          <div class="inv-group-store">
-            <div class="inv-group-store-name">${g.store||'電子發票'}</div>
-            <div class="inv-group-meta"><span class="inv-group-count">${g.items.length} 項</span><span class="inv-group-no">${g.invoiceNo}</span></div>
+      <div class="ref-card" data-grp="${g.invoiceNo}">
+        <div class="ref-card-icon">${this._storeIcon(g.store)}</div>
+        <div class="ref-card-body">
+          <div class="ref-card-title">${g.store||'電子發票'}</div>
+          <div class="ref-card-sub">${first?.description||'(未命名)'}${moreCount>0?` <span class="ref-more">+${moreCount}項</span>`:''}</div>
+          <div class="ref-card-tags">
+            ${pendingN>0?`<span class="ref-tag pending">待分類${pendingN>1?' '+pendingN:''}</span>`:''}
+            ${cats.slice(0,2).map(c=>`<span class="ref-tag">${c}</span>`).join('')}
+            <span class="ref-tag inv">🧾</span>
           </div>
-          <div class="inv-group-right"><div class="inv-group-total">${fmt.money(total)}</div></div>
         </div>
-        <div class="inv-group-tags">
-          ${pendingN>0?`<span class="expense-cat-badge pending">待分類 ${pendingN}</span>`:''}
-          ${cats.map(c=>`<span class="expense-cat-badge">${c}</span>`).join('')}
-          <span class="expense-cat-badge invoice">🧾 發票</span>
-        </div>
-        <div class="inv-group-items">
-          ${g.items.map(item=>`
-            <div class="inv-group-item" data-id="${item.id}">
-              <div class="inv-group-item-name">${item.description||'(未命名)'}</div>
-              <div class="inv-group-item-amt">${fmt.money(item.amount)}</div>
-              <div class="inv-group-item-cat${item.status==='pending'?' pending':''}">${item.status==='pending'?'待分類':(item.category1||(item.category2?item.category2:'未分類'))}</div>
-            </div>`).join('')}
+        <div class="ref-card-right">
+          <div class="ref-card-amount">${fmt.money(total)}</div>
+          <div class="ref-card-count">${g.items.length} 項</div>
         </div>
       </div>`;
   }
 
   _buildSingleCard(e) {
     const icon=getCatIcon(e.category2||(e.status==='pending'?'待分類':'其他'));
+    const title=e.category2||e.category1||(e.status==='pending'?'待分類':'未分類');
     return `
-      <div class="expense-card" data-id="${e.id}">
-        <div class="expense-cat-icon">${icon}</div>
-        <div class="expense-info">
-          <div class="expense-desc">${e.description||'(未命名)'}</div>
-          <div class="expense-meta">
-            ${e.store?`<span class="expense-store">🏪 ${e.store}</span>`:''}
-            ${e.status==='pending'?`<span class="expense-cat-badge pending">待分類</span>`:e.category1?`<span class="expense-cat-badge">${e.category1}${e.category2?' · '+e.category2:''}</span>`:''}
-            ${e.source==='invoice'?`<span class="expense-cat-badge invoice">🧾</span>`:''}
+      <div class="ref-card" data-id="${e.id}">
+        <div class="ref-card-icon">${icon}</div>
+        <div class="ref-card-body">
+          <div class="ref-card-title">${title}</div>
+          <div class="ref-card-sub">${e.description||'(未命名)'}</div>
+          <div class="ref-card-tags">
+            ${e.status==='pending'?`<span class="ref-tag pending">待分類</span>`:''}
+            ${e.category1&&e.status!=='pending'?`<span class="ref-tag">${e.category1}</span>`:''}
+            ${e.source==='invoice'?`<span class="ref-tag inv">🧾</span>`:''}
+            ${e.store?`<span class="ref-tag store">🏪 ${e.store}</span>`:''}
           </div>
         </div>
-        <div class="expense-amount">${fmt.money(e.amount)}</div>
+        <div class="ref-card-right">
+          <div class="ref-card-amount">${fmt.money(e.amount)}</div>
+        </div>
       </div>`;
   }
 
@@ -721,18 +729,12 @@ class App {
 
       <div class="settings-section">
         <div class="settings-section-title">🏪 消費店家自動分類</div>
-        <div style="padding:8px 12px 6px;font-size:10px;color:var(--text3);line-height:1.6;">設定店家名稱對應的分類，匯入發票時自動套用。</div>
-        <div class="store-map-list" id="store-map-list">
-          ${storeMap.length?storeMap.map((m,i)=>`
-            <div class="store-map-item">
-              <div class="store-map-name" title="${m.store}">${m.store}</div>
-              <div class="store-map-cats">${m.cat1}${m.cat2?' › '+m.cat2:''}</div>
-              <button class="store-map-del" data-si="${i}">✕</button>
-            </div>`).join('')
-            :`<div class="store-map-empty">尚無設定。按下方「＋新增」來新增。</div>`}
-        </div>
-        <div style="padding:8px 12px;">
-          <button class="btn-primary" id="add-store-map-btn" style="width:100%;font-size:12px;">＋ 新增店家分類規則</button>
+        <div class="settings-item" id="open-store-mapping-btn">
+          <div>
+            <div class="settings-item-label">店家分類規則</div>
+            <div class="settings-item-sub">共 ${storeMap.length} 條規則，匯入發票時自動套用</div>
+          </div>
+          <span class="settings-item-arrow">›</span>
         </div>
       </div>
 
@@ -867,14 +869,16 @@ class App {
     const el=document.getElementById('stats-content');
     if(!el) return;
 
-    // Sort expenses for cat list
-    const sortedCatEntries = this.statsSortMode==='amount'
-      ? [...catEntries].sort((a,b)=>b[1]-a[1])
-      : [...catEntries].sort((a,b)=>{
-          const la=catExpenses[a[0]]?.sort((x,y)=>y.date.localeCompare(x.date))[0]?.date||'';
-          const lb=catExpenses[b[0]]?.sort((x,y)=>y.date.localeCompare(x.date))[0]?.date||'';
-          return lb.localeCompare(la);
-        });
+    // Sort cat entries
+    const sortedCatEntries = (() => {
+      const e = [...catEntries];
+      if(this.statsSortMode==='amount-desc') return e.sort((a,b)=>b[1]-a[1]);
+      if(this.statsSortMode==='amount-asc')  return e.sort((a,b)=>a[1]-b[1]);
+      const latestDate = (name)=> (catExpenses[name]||[]).reduce((mx,x)=>x.date>mx?x.date:mx,'');
+      if(this.statsSortMode==='date-desc') return e.sort((a,b)=>latestDate(b[0]).localeCompare(latestDate(a[0])));
+      if(this.statsSortMode==='date-asc')  return e.sort((a,b)=>latestDate(a[0]).localeCompare(latestDate(b[0])));
+      return e.sort((a,b)=>b[1]-a[1]);
+    })();
 
     el.innerHTML=`
       <div class="stats-total-card">
@@ -901,8 +905,10 @@ class App {
 
       <div class="stats-sort-bar">
         <span class="stats-sort-label">排序：</span>
-        <button class="stats-sort-btn${this.statsSortMode==='amount'?' active':''}" data-sort="amount">金額高低</button>
-        <button class="stats-sort-btn${this.statsSortMode==='date'?' active':''}" data-sort="date">最近優先</button>
+        <button class="stats-sort-btn${this.statsSortMode==='amount-desc'?' active':''}" data-sort="amount-desc">金額↓</button>
+        <button class="stats-sort-btn${this.statsSortMode==='amount-asc'?' active':''}" data-sort="amount-asc">金額↑</button>
+        <button class="stats-sort-btn${this.statsSortMode==='date-desc'?' active':''}" data-sort="date-desc">最新↓</button>
+        <button class="stats-sort-btn${this.statsSortMode==='date-asc'?' active':''}" data-sort="date-asc">最舊↓</button>
       </div>
 
       <div class="stats-cat-list" id="stats-cat-list">
@@ -924,9 +930,13 @@ class App {
               ${subs.map(([k,sd])=>{
                 const subName=k.split('||')[1];
                 const sp=total>0?((sd.amount/total)*100).toFixed(1):0;
-                const sortedItems=this.statsSortMode==='amount'
-                  ?[...sd.items].sort((a,b)=>Number(b.amount)-Number(a.amount))
-                  :[...sd.items].sort((a,b)=>b.date.localeCompare(a.date));
+                const sortedItems=(()=>{
+                  const it=[...sd.items];
+                  if(this.statsSortMode==='amount-desc') return it.sort((a,b)=>Number(b.amount)-Number(a.amount));
+                  if(this.statsSortMode==='amount-asc')  return it.sort((a,b)=>Number(a.amount)-Number(b.amount));
+                  if(this.statsSortMode==='date-asc')    return it.sort((a,b)=>a.date.localeCompare(b.date));
+                  return it.sort((a,b)=>b.date.localeCompare(a.date));
+                })();
                 return `<div class="stats-sub-cat-header">
                     <span class="stats-sub-cat-label">${subName}</span>
                     <span class="stats-sub-cat-pct">${sp}%</span>
@@ -1031,9 +1041,12 @@ class App {
     });
     // Calendar swipe
     this._attachSwipe(document.getElementById('cal-swipe-wrap'));
-    // Expense/invoice item click → edit (NOT expand)
-    document.querySelectorAll('.expense-card[data-id], .inv-group-item[data-id]').forEach(el=>{
+    // ref-card: single→edit, group→open group detail sheet
+    document.querySelectorAll('.ref-card[data-id]').forEach(el=>{
       el.addEventListener('click',e=>{e.stopPropagation();this.openExpenseModal(el.dataset.id);});
+    });
+    document.querySelectorAll('.ref-card[data-grp]').forEach(el=>{
+      el.addEventListener('click',e=>{e.stopPropagation();this._openInvoiceGroupSheet(el.dataset.grp);});
     });
     // Pending badge
     document.getElementById('pending-badge')?.addEventListener('click',()=>this._openPendingModal());
@@ -1043,10 +1056,28 @@ class App {
   }
 
   _changeMonth(delta) {
-    this.calendarMonth+=delta;
-    if(this.calendarMonth<1){this.calendarMonth=12;this.calendarYear--;}
-    if(this.calendarMonth>12){this.calendarMonth=1;this.calendarYear++;}
-    this.renderView();
+    const dir = delta > 0 ? 'left' : 'right';
+    const wrap = document.getElementById('cal-swipe-wrap');
+    if(wrap){
+      wrap.classList.add('cal-exit-'+dir);
+      setTimeout(()=>{
+        this.calendarMonth+=delta;
+        if(this.calendarMonth<1){this.calendarMonth=12;this.calendarYear--;}
+        if(this.calendarMonth>12){this.calendarMonth=1;this.calendarYear++;}
+        this.renderView();
+        // enter animation
+        const newWrap=document.getElementById('cal-swipe-wrap');
+        if(newWrap){
+          newWrap.classList.add('cal-enter-'+dir);
+          requestAnimationFrame(()=>requestAnimationFrame(()=>{newWrap.classList.remove('cal-enter-'+dir);}));
+        }
+      },160);
+    } else {
+      this.calendarMonth+=delta;
+      if(this.calendarMonth<1){this.calendarMonth=12;this.calendarYear--;}
+      if(this.calendarMonth>12){this.calendarMonth=1;this.calendarYear++;}
+      this.renderView();
+    }
   }
 
   _attachSwipe(el) {
@@ -1130,15 +1161,8 @@ class App {
     document.getElementById('add-parent-cat-btn')?.addEventListener('click',()=>{
       this._promptCatName('新增大分類','',name=>{this.store.data.categories.push({name,subs:[]});this.store.save();this.renderView();this.toast('已新增大分類','success');});
     });
-    // Store mapping
-    document.getElementById('add-store-map-btn')?.addEventListener('click',()=>this._openStoreMappingModal(null));
-    document.querySelectorAll('.store-map-del').forEach(btn=>{
-      btn.addEventListener('click',()=>{
-        const si=+btn.dataset.si;
-        this.store.data.storeMapping.splice(si,1);
-        this.store.save(); this.renderView(); this.toast('已刪除','success');
-      });
-    });
+    // Store mapping page
+    document.getElementById('open-store-mapping-btn')?.addEventListener('click',()=>this._openStoreMappingPage());
     // Invoice settings
     document.getElementById('save-invoice-settings-btn')?.addEventListener('click',()=>{
       const s=this.store.data.settings;
@@ -1227,16 +1251,27 @@ class App {
     // Sort buttons (delegated, re-render)
     document.getElementById('stats-content')?.addEventListener('click',e=>{
       const sortBtn=e.target.closest('.stats-sort-btn');
-      if(sortBtn){
+      if(sortBtn && sortBtn.dataset.sort){
+        // Save currently open cats before re-render
+        this._statsOpenCats=new Set();
+        document.querySelectorAll('.stats-cat-sub-list.open').forEach(el=>{
+          const catItem=el.closest('.stats-cat-item');
+          if(catItem?.dataset.cat) this._statsOpenCats.add(catItem.dataset.cat);
+        });
         this.statsSortMode=sortBtn.dataset.sort;
-        document.querySelectorAll('.stats-sort-btn').forEach(b=>b.classList.toggle('active',b.dataset.sort===this.statsSortMode));
-        // Re-render cat list only
         const from=document.getElementById('stats-from')?.value||this._statsFromDefault();
         const to=document.getElementById('stats-to')?.value||fmt.today();
         const exps=this.statsCustom
-          ?this.store.data.expenses.filter(e=>e.date>=from&&e.date<=to)
+          ?this.store.data.expenses.filter(ex=>ex.date>=from&&ex.date<=to)
           :this.store.getByMonth(this.statsYear,this.statsMonth);
         this._renderStats(exps);
+        // Re-open previously open cats
+        this._statsOpenCats.forEach(cat=>{
+          const id='scat-'+cat.replace(/\s/g,'_');
+          const sub=document.getElementById(id);
+          const hdr=sub?.closest('.stats-cat-item')?.querySelector('.stats-cat-toggle');
+          if(sub){sub.classList.add('open');hdr?.classList.add('open');}
+        });
         return;
       }
       // Cat accordion toggle
@@ -1253,6 +1288,97 @@ class App {
       // Expense row in stats → edit
       const expRow=e.target.closest('.stats-expense-row[data-id]');
       if(expRow) this.openExpenseModal(expRow.dataset.id);
+    });
+  }
+
+  // ─── INVOICE GROUP DETAIL SHEET ─────────────────────────────
+  _openInvoiceGroupSheet(invoiceNo) {
+    const items=this.store.data.expenses.filter(e=>e.invoiceNo===invoiceNo);
+    if(!items.length) return;
+    const total=items.reduce((s,i)=>s+Number(i.amount||0),0);
+    const store=items[0]?.store||'電子發票';
+    this._openSheet(`
+      <div class="modal-handle"></div>
+      <div class="modal-header">
+        <div class="modal-title">${store}</div>
+        <button class="modal-close" id="modal-close-btn">✕</button>
+      </div>
+      <div style="padding:6px 14px 4px;font-size:9px;color:var(--text3);font-family:var(--font-mono);">🧾 ${invoiceNo}</div>
+      <div class="modal-body-scroll" style="max-height:60dvh;">
+        ${items.map(item=>`
+          <div class="inv-group-item" data-id="${item.id}" style="border-radius:9px;margin-bottom:5px;border:1px solid var(--border);">
+            <div class="inv-group-item-name" style="font-size:13px;">${item.description||'(未命名)'}</div>
+            <div class="inv-group-item-amt">${fmt.money(item.amount)}</div>
+            <div class="inv-group-item-cat${item.status==='pending'?' pending':''}">${item.status==='pending'?'待分類':(item.category1||(item.category2?item.category2:'未分類'))}</div>
+          </div>`).join('')}
+      </div>
+      <div style="padding:10px 14px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:11px;color:var(--text3);">共 ${items.length} 項</span>
+        <span style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:var(--amber);">${fmt.money(total)}</span>
+      </div>`);
+    // Item click → edit
+    document.querySelectorAll('.inv-group-item[data-id]').forEach(el=>{
+      el.addEventListener('click',()=>{this.closeModal();this.openExpenseModal(el.dataset.id);});
+    });
+  }
+
+  // ─── STORE MAPPING FULL PAGE ────────────────────────────────
+  _openStoreMappingPage() {
+    this._smSortMode = this._smSortMode || 'name'; // 'name'|'time'
+    const rules = this.store.data.storeMapping || [];
+    const sorted = [...rules.entries()].map(([i,r])=>({...r,_idx:i}));
+    if(this._smSortMode==='name') sorted.sort((a,b)=>a.store.localeCompare(b.store,'zh-TW'));
+    else sorted.sort((a,b)=>(b._idx-a._idx)); // time: newest first
+
+    const overlay=document.getElementById('modal-overlay');
+    const content=document.getElementById('modal-content');
+    const backdrop=document.getElementById('modal-backdrop');
+    content.classList.remove('sheet-mode');
+    content.innerHTML=`
+      <div class="modal-topbar">
+        <button class="modal-topbar-btn" id="modal-close-btn">✕</button>
+        <div class="modal-topbar-title">店家自動分類</div>
+        <button class="modal-topbar-btn confirm" id="sm-add-new-btn" title="新增">＋</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;padding:8px 14px 6px;border-bottom:1px solid var(--border);flex-shrink:0;">
+        <span style="font-size:10px;color:var(--text3);">排序：</span>
+        <button class="stats-sort-btn${this._smSortMode==='name'?' active':''}" data-sm-sort="name">名稱</button>
+        <button class="stats-sort-btn${this._smSortMode==='time'?' active':''}" data-sm-sort="time">新增時間</button>
+        <span style="margin-left:auto;font-size:10px;color:var(--text3);">${rules.length} 條規則</span>
+      </div>
+      <div class="modal-body" style="padding:8px 0;gap:0;">
+        ${sorted.length?sorted.map(r=>`
+          <div class="sm-rule-row" data-ridx="${r._idx}">
+            <div class="sm-rule-store">${r.store}</div>
+            <div class="sm-rule-cats">${r.cat1}${r.cat2?' › '+r.cat2:''}</div>
+            <div class="sm-rule-actions">
+              <button class="sm-rule-btn edit" data-ridx="${r._idx}">✏️</button>
+              <button class="sm-rule-btn del" data-ridx="${r._idx}">🗑</button>
+            </div>
+          </div>`).join('')
+          :`<div class="empty-state"><div class="icon">🏪</div><p>尚無規則，點右上角＋新增</p></div>`}
+      </div>`;
+    overlay.classList.remove('hidden');
+    backdrop.classList.add('visible');
+    requestAnimationFrame(()=>content.classList.add('slide-in'));
+    document.getElementById('modal-close-btn')?.addEventListener('click',()=>this.closeModal());
+    backdrop.addEventListener('click',()=>this.closeModal(),{once:true});
+    document.getElementById('sm-add-new-btn')?.addEventListener('click',()=>{this.closeModal();setTimeout(()=>this._openStoreMappingModal(null),320);});
+    document.querySelectorAll('[data-sm-sort]').forEach(btn=>{
+      btn.addEventListener('click',()=>{this._smSortMode=btn.dataset.smSort;this.closeModal();setTimeout(()=>this._openStoreMappingPage(),320);});
+    });
+    document.querySelectorAll('.sm-rule-btn.edit').forEach(btn=>{
+      btn.addEventListener('click',e=>{e.stopPropagation();const idx=+btn.dataset.ridx;this.closeModal();setTimeout(()=>this._openStoreMappingModal(idx),320);});
+    });
+    document.querySelectorAll('.sm-rule-btn.del').forEach(btn=>{
+      btn.addEventListener('click',e=>{
+        e.stopPropagation();
+        const idx=+btn.dataset.ridx;
+        if(!confirm(`刪除「${this.store.data.storeMapping[idx]?.store}」規則？`)) return;
+        this.store.data.storeMapping.splice(idx,1);
+        this.store.save();this.toast('已刪除','success');
+        this.closeModal();setTimeout(()=>this._openStoreMappingPage(),320);
+      });
     });
   }
 
