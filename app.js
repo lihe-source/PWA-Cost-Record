@@ -1,5 +1,5 @@
 /* ─────────────────────────────────────────────────────────────
-   Cost Record PWA — app.js  V0.8
+   Cost Record PWA — app.js  V0.9
    Modules: DataStore · InvoiceService · DriveService · App
 ───────────────────────────────────────────────────────────── */
 'use strict';
@@ -525,7 +525,7 @@ class App {
   renderView() {
     const main=document.getElementById('main-content');
     const h1=document.querySelector('#app-header h1');
-    main.classList.remove('home-mode'); // no split layout in V0.8
+    main.classList.toggle('home-mode', this.view==='home');
     switch(this.view) {
       case 'home':     main.innerHTML=this._buildHome();     h1.textContent='記帳本'; break;
       case 'search':   main.innerHTML=this._buildSearch();   h1.textContent='搜尋';   break;
@@ -552,8 +552,7 @@ class App {
       :`<span style="color:var(--text2)">${pending}</span>`;
     const groups=this._groupExpenses(day);
     return `
-      <div class="home-wrap">
-        <!-- Month Nav -->
+      <div class="home-top">
         <div class="month-nav">
           <div class="month-nav-title">${fmt.monthLabel(y,m)}</div>
           <div class="month-nav-btns">
@@ -562,11 +561,9 @@ class App {
             <button class="icon-btn" id="next-month-btn">›</button>
           </div>
         </div>
-        <!-- Calendar (swipeable) -->
         <div class="cal-swipe-wrap" id="cal-swipe-wrap">
           <div class="calendar-wrap">${this._buildCalendar(y,m,datesSet)}</div>
         </div>
-        <!-- Month Summary -->
         <div class="month-summary">
           <div class="month-stats">
             <div class="stat-item"><div class="stat-label">當月支出</div><div class="stat-value big">${fmt.money(total)}</div></div>
@@ -580,7 +577,8 @@ class App {
               <div class="cat-row-amount">${fmt.money(amt)}</div>
             </div>`).join('')}</div>`:''}
         </div>
-        <!-- Day header -->
+      </div>
+      <div class="home-bottom">
         <div class="day-panel-header">
           <div class="day-panel-title">
             ${fmt.date(this.selected)}
@@ -591,7 +589,6 @@ class App {
             <button class="btn-day-action btn-add" id="add-expense-btn">＋ 記帳</button>
           </div>
         </div>
-        <!-- Expense list -->
         <div class="expense-list">
           ${groups.length
             ?groups.map(g=>g.type==='invoice-group'?this._buildGroupCard(g):this._buildSingleCard(g)).join('')
@@ -697,11 +694,9 @@ class App {
     h+='<div class="cal-dow cal-wk-hdr">週</div>';
     h+=dows.map(d=>`<div class="cal-dow">${d}</div>`).join('');
 
-    // Build all cells row by row
-    // Total cells = first (prev month filler) + days + trailing
-    const rem=(first+days)%7===0?0:7-((first+days)%7);
-    const totalCells=first+days+rem;
-    const totalRows=totalCells/7;
+    // Always render exactly 6 rows = 42 cells (fixed height, no jump between months)
+    const FIXED_ROWS = 6;
+    const totalRows = FIXED_ROWS;
 
     for(let row=0;row<totalRows;row++){
       // Determine the Sunday date for this row to get week number
@@ -730,7 +725,9 @@ class App {
           const d=prevDays-first+1+cell;
           h+=`<div class="cal-day other-month"><div class="cal-day-num">${d}</div><div class="cal-dot-wrap"></div></div>`;
         } else if(cell>=first+days){
-          const d=cell-first-days+1;
+          // Next month trailing days (grey out)
+          const nextDate=new Date(year,month,cell-first-days+1);
+          const d=nextDate.getDate();
           h+=`<div class="cal-day other-month"><div class="cal-day-num">${d}</div><div class="cal-dot-wrap"></div></div>`;
         } else {
           const d=cell-first+1;
@@ -1399,9 +1396,9 @@ class App {
             <div class="edit-field-value" style="color:var(--text3)">${invoiceNo}</div></div>
         </div>
 
-        <div class="edit-notes-area">
+        <div class="edit-notes-area" style="pointer-events:none;">
           <div class="edit-notes-label">消費項目明細（共 ${items.length} 項，${fmt.money(total)}）</div>
-          <textarea class="edit-notes-input" id="grp-desc" readonly style="color:var(--text2);min-height:80px;max-height:160px;overflow-y:auto;">${combinedDesc}</textarea>
+          <textarea class="edit-notes-input" id="grp-desc" readonly tabindex="-1" style="color:var(--text2);min-height:80px;max-height:160px;overflow-y:auto;pointer-events:none;" aria-label="發票明細">${combinedDesc}</textarea>
         </div>
       </div>`;
 
@@ -1449,7 +1446,7 @@ class App {
         this.store.updateExpense(it.id,{category1:cat1,category2:cat2,status:'categorized'});
       });
       this.toast(`✅ 已更新 ${items.length} 筆分類`,'success');
-      this.closeModal();this.renderView();
+      this.closeModal(()=>this.renderView());
     });
   }
 
@@ -1563,7 +1560,7 @@ class App {
       if(!this.store.data.storeMapping) this.store.data.storeMapping=[];
       if(existingIdx!==null) this.store.data.storeMapping[existingIdx]=rule;
       else this.store.data.storeMapping.push(rule);
-      this.store.save();this.closeModal();this.renderView();this.toast('規則已儲存','success');
+      this.store.save();this.toast('規則已儲存','success');this.closeModal(()=>this.renderView());
     });
   }
 
@@ -1695,7 +1692,7 @@ class App {
 
     // Invoice item jump
     document.querySelectorAll('.inv-item-row[data-inv-id]').forEach(row=>{
-      row.addEventListener('click',()=>{this.closeModal();this.openExpenseModal(row.dataset.invId);});
+      row.addEventListener('click',()=>{this.closeModal(()=>this.openExpenseModal(row.dataset.invId));});
     });
 
     document.getElementById('modal-close-btn')?.addEventListener('click',()=>this.closeModal());
@@ -1704,7 +1701,7 @@ class App {
     document.getElementById('modal-delete-btn')?.addEventListener('click',()=>{
       if(!confirm('確定刪除這筆消費？'))return;
       this.store.deleteExpense(this._editId);
-      this.toast('已刪除','success');this.closeModal();this.renderView();
+      this.toast('已刪除','success');this.closeModal(()=>this.renderView());
     });
   }
 
@@ -1725,16 +1722,22 @@ class App {
     if(isEdit){this.store.updateExpense(this._editId,data);this.toast('已更新','success');}
     else{this.store.addExpense(data);this.toast('已新增','success');this.selected=date;
       const d=new Date(date);this.calendarYear=d.getFullYear();this.calendarMonth=d.getMonth()+1;}
-    this.closeModal();this.renderView();
+    this.closeModal(()=>this.renderView());
   }
 
-  closeModal() {
+  closeModal(cb) {
     const content=document.getElementById('modal-content');
     const overlay=document.getElementById('modal-overlay');
     const backdrop=document.getElementById('modal-backdrop');
     content.classList.remove('slide-in');
     backdrop.classList.remove('visible');
-    setTimeout(()=>{overlay.classList.add('hidden');content.innerHTML='';content.classList.remove('sheet-mode');this._editId=null;},300);
+    setTimeout(()=>{
+      overlay.classList.add('hidden');
+      content.innerHTML='';
+      content.classList.remove('sheet-mode');
+      this._editId=null;
+      if(cb) cb();
+    },300);
   }
 
   // ─── PENDING MODAL ────────────────────────────────────────────
@@ -1787,7 +1790,7 @@ class App {
         this.store.updateExpense(pid,{category1:cat1,category2:cat2,status:'categorized'});
         saved++;
       });
-      this.closeModal();this.toast(`已更新 ${saved} 筆分類`,'success');this.renderView();
+      this.toast(`已更新 ${saved} 筆分類`,'success');this.closeModal(()=>this.renderView());
     });
   }
 
@@ -1895,9 +1898,9 @@ class App {
         status:mapped.cat1?'categorized':'pending',source:'invoice',invoiceNo:r.invoiceNo});
       this.store.markInvoiceImported(key);imported++;
     }
-    this.closeModal();this.toast(`✅ 已匯入 ${imported} 筆發票明細`,'success');
+    this.toast(`✅ 已匯入 ${imported} 筆發票明細`,'success');
     if(rows.length>0&&rows[0].date){const d=new Date(rows[0].date);this.calendarYear=d.getFullYear();this.calendarMonth=d.getMonth()+1;this.selected=rows[0].date;}
-    this.renderView();
+    this.closeModal(()=>this.renderView());
   }
 
   async _fetchInvoicesApi() {
