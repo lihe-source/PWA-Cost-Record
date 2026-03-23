@@ -1,4 +1,4 @@
-/* Cost Record PWA — styles.css V0.7 */
+/* Cost Record PWA — styles.css V0.8 */
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=DM+Mono:wght@400;500&display=swap');
 :root{
   --bg:#181825;--bg2:#1e1e2e;--bg3:#252538;--bg4:#2e2e45;
@@ -78,7 +78,11 @@ input,select,textarea{font-size:16px!important;-webkit-text-size-adjust:100%}
 /* Calendar grid */
 .calendar-wrap{padding:2px 8px 4px}
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px}
+/* 8-col grid with week number column */
+.cal-grid-wk{display:grid;grid-template-columns:28px repeat(7,1fr);gap:1px}
 .cal-dow{text-align:center;font-size:9px;color:var(--text3);padding:2px 0;font-weight:600;text-transform:uppercase}
+.cal-wk-hdr{font-size:8px;color:var(--text3);text-align:center;padding:2px 0;font-weight:600;opacity:.6}
+.cal-wk-num{font-size:7px;color:var(--text3);text-align:center;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);opacity:.55;letter-spacing:-.2px;line-height:1}
 .cal-dow:first-child{color:rgba(244,63,94,.6)}
 .cal-dow:last-child{color:rgba(96,165,250,.6)}
 .cal-day{display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -204,7 +208,7 @@ input,select,textarea{font-size:16px!important;-webkit-text-size-adjust:100%}
 #modal-content{position:fixed;inset:0;max-width:430px;margin:0 auto;background:var(--bg);z-index:101;display:flex;flex-direction:column;
   transform:translateX(105%);transition:transform .28s cubic-bezier(.4,0,.2,1);padding-top:env(safe-area-inset-top)}
 #modal-content.slide-in{transform:translateX(0)}
-#modal-content.sheet-mode{inset:auto 0 0 0;border-radius:var(--radius) var(--radius) 0 0;max-height:92dvh;
+#modal-content.sheet-mode{inset:auto 0 0 0;border-radius:var(--radius) var(--radius) 0 0;max-height:88dvh;
   transform:translateY(105%);transition:transform .28s cubic-bezier(.4,0,.2,1);padding-top:0;padding-bottom:env(safe-area-inset-bottom)}
 #modal-content.sheet-mode.slide-in{transform:translateY(0)}
 
@@ -262,7 +266,7 @@ input,select,textarea{font-size:16px!important;-webkit-text-size-adjust:100%}
 .edit-notes-area{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 11px;display:flex;flex-direction:column;gap:3px;transition:border-color .2s}
 .edit-notes-area:focus-within{border-color:var(--amber)}
 .edit-notes-label{font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em}
-.edit-notes-input{font-size:13px;color:var(--text);background:none;border:none;outline:none;font-family:var(--font-main);width:100%;resize:none;min-height:50px;line-height:1.6;padding:0}
+.edit-notes-input{font-size:13px;color:var(--text);background:none;border:none;outline:none;font-family:var(--font-main);width:100%;resize:none;min-height:50px;max-height:120px;overflow-y:auto;line-height:1.6;padding:0}
 .edit-notes-input::placeholder{color:var(--text3)}
 
 /* Invoice items in modal */

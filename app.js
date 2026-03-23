@@ -1,5 +1,5 @@
 /* ─────────────────────────────────────────────────────────────
-   Cost Record PWA — app.js  V0.7
+   Cost Record PWA — app.js  V0.8
    Modules: DataStore · InvoiceService · DriveService · App
 ───────────────────────────────────────────────────────────── */
 'use strict';
@@ -525,7 +525,7 @@ class App {
   renderView() {
     const main=document.getElementById('main-content');
     const h1=document.querySelector('#app-header h1');
-    main.classList.remove('home-mode'); // no split layout in V0.7
+    main.classList.remove('home-mode'); // no split layout in V0.8
     switch(this.view) {
       case 'home':     main.innerHTML=this._buildHome();     h1.textContent='記帳本'; break;
       case 'search':   main.innerHTML=this._buildSearch();   h1.textContent='搜尋';   break;
@@ -677,25 +677,73 @@ class App {
     return '🧾';
   }
 
+  _getWeekNum(year,month,day) {
+    // US week number: week 1 contains Jan 1, weeks start on Sunday
+    const date=new Date(year,month-1,day);
+    const jan1=new Date(year,0,1);
+    const jan1dow=jan1.getDay(); // 0=Sun
+    const dayOfYear=Math.round((date-jan1)/86400000);
+    return Math.floor((dayOfYear+jan1dow)/7)+1;
+  }
+
   _buildCalendar(year,month,datesSet) {
     const first=new Date(year,month-1,1).getDay();
     const days=new Date(year,month,0).getDate();
     const prevDays=new Date(year,month-1,0).getDate();
     const dows=['日','一','二','三','四','五','六'];
-    let h='<div class="cal-grid">';
+    // Grid has 8 cols: week-num + 7 days
+    let h='<div class="cal-grid-wk">';
+    // Header row: blank week col + day headers
+    h+='<div class="cal-dow cal-wk-hdr">週</div>';
     h+=dows.map(d=>`<div class="cal-dow">${d}</div>`).join('');
-    for(let i=0;i<first;i++) h+=`<div class="cal-day other-month"><div class="cal-day-num">${prevDays-first+1+i}</div><div class="cal-dot-wrap"></div></div>`;
-    for(let d=1;d<=days;d++){
-      const ds=`${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-      const isT=ds===this.today,isSel=ds===this.selected,hasDot=datesSet.has(ds);
-      const dow=new Date(year,month-1,d).getDay();
-      let cls='cal-day';
-      if(isT) cls+=' today'; if(isSel) cls+=' selected';
-      if(dow===0) cls+=' is-sun'; if(dow===6) cls+=' is-sat';
-      h+=`<div class="${cls}" data-date="${ds}"><div class="cal-day-num">${d}</div><div class="cal-dot-wrap">${hasDot?'<div class="cal-dot"></div>':''}</div></div>`;
-    }
+
+    // Build all cells row by row
+    // Total cells = first (prev month filler) + days + trailing
     const rem=(first+days)%7===0?0:7-((first+days)%7);
-    for(let d=1;d<=rem;d++) h+=`<div class="cal-day other-month"><div class="cal-day-num">${d}</div><div class="cal-dot-wrap"></div></div>`;
+    const totalCells=first+days+rem;
+    const totalRows=totalCells/7;
+
+    for(let row=0;row<totalRows;row++){
+      // Determine the Sunday date for this row to get week number
+      const rowStartCell=row*7; // 0-based
+      // Which actual date is cell rowStartCell?
+      let wkYear=year,wkMonth=month,wkDay;
+      const cellDayOfMonth=rowStartCell-first+1;
+      if(cellDayOfMonth<1){
+        // in prev month
+        const prevDate=new Date(year,month-2,prevDays+cellDayOfMonth);
+        wkYear=prevDate.getFullYear();wkMonth=prevDate.getMonth()+1;wkDay=prevDate.getDate();
+      } else if(cellDayOfMonth>days){
+        // in next month
+        const nextDate=new Date(year,month,cellDayOfMonth-days);
+        wkYear=nextDate.getFullYear();wkMonth=nextDate.getMonth()+1;wkDay=nextDate.getDate();
+      } else {
+        wkDay=cellDayOfMonth;
+      }
+      const wkNum=this._getWeekNum(wkYear,wkMonth,wkDay);
+      h+=`<div class="cal-wk-num">WK${wkNum}</div>`;
+
+      // 7 day cells for this row
+      for(let col=0;col<7;col++){
+        const cell=row*7+col;
+        if(cell<first){
+          const d=prevDays-first+1+cell;
+          h+=`<div class="cal-day other-month"><div class="cal-day-num">${d}</div><div class="cal-dot-wrap"></div></div>`;
+        } else if(cell>=first+days){
+          const d=cell-first-days+1;
+          h+=`<div class="cal-day other-month"><div class="cal-day-num">${d}</div><div class="cal-dot-wrap"></div></div>`;
+        } else {
+          const d=cell-first+1;
+          const ds=`${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+          const isT=ds===this.today,isSel=ds===this.selected,hasDot=datesSet.has(ds);
+          const dow=new Date(year,month-1,d).getDay();
+          let cls='cal-day';
+          if(isT) cls+=' today'; if(isSel) cls+=' selected';
+          if(dow===0) cls+=' is-sun'; if(dow===6) cls+=' is-sat';
+          h+=`<div class="${cls}" data-date="${ds}"><div class="cal-day-num">${d}</div><div class="cal-dot-wrap">${hasDot?'<div class="cal-dot"></div>':''}</div></div>`;
+        }
+      }
+    }
     return h+'</div>';
   }
 
@@ -1291,34 +1339,117 @@ class App {
     });
   }
 
-  // ─── INVOICE GROUP DETAIL SHEET ─────────────────────────────
+  // ─── INVOICE GROUP EDIT ──────────────────────────────────────
+  // Open the whole invoice as ONE editing unit (category applies to all items)
   _openInvoiceGroupSheet(invoiceNo) {
     const items=this.store.data.expenses.filter(e=>e.invoiceNo===invoiceNo);
     if(!items.length) return;
     const total=items.reduce((s,i)=>s+Number(i.amount||0),0);
     const store=items[0]?.store||'電子發票';
-    this._openSheet(`
-      <div class="modal-handle"></div>
-      <div class="modal-header">
-        <div class="modal-title">${store}</div>
-        <button class="modal-close" id="modal-close-btn">✕</button>
+    const date=items[0]?.date||fmt.today();
+    // Combine all descriptions for the notes field
+    const combinedDesc=items.map(it=>`${it.description||'(未命名)'}  $${Number(it.amount||0).toLocaleString('zh-TW')}`).join('\n');
+    const firstCat1=items.find(i=>i.category1)?.category1||'';
+    const firstCat2=items.find(i=>i.category2)?.category2||'';
+
+    const cats=this.store.data.categories;
+    const selectedCat=cats.find(c=>c.name===firstCat1);
+    const cat1Html=cats.map(cat=>`
+      <button class="edit-cat-btn${firstCat1===cat.name?' selected':''}" data-cat1="${cat.name}" data-cat2="">
+        <div class="edit-cat-circle">${CAT_ICONS[cat.subs?.[0]]||'📁'}</div>
+        <div class="edit-cat-label">${cat.name}</div>
+      </button>`).join('');
+    const cat2Html=selectedCat?(selectedCat.subs||[]).map(sub=>`
+      <button class="edit-cat-btn${firstCat2===sub?' selected':''}" data-cat1="${selectedCat.name}" data-cat2="${sub}">
+        <div class="edit-cat-circle">${getCatIcon(sub)}</div>
+        <div class="edit-cat-label">${sub}</div>
+      </button>`).join(''):'';
+
+    const overlay=document.getElementById('modal-overlay');
+    const content=document.getElementById('modal-content');
+    const backdrop=document.getElementById('modal-backdrop');
+    content.classList.remove('sheet-mode');
+    content.innerHTML=`
+      <div class="modal-topbar">
+        <button class="modal-topbar-btn" id="modal-close-btn">✕</button>
+        <div class="modal-topbar-title">${store}</div>
+        <button class="modal-topbar-btn confirm" id="grp-save-btn">✓</button>
       </div>
-      <div style="padding:6px 14px 4px;font-size:9px;color:var(--text3);font-family:var(--font-mono);">🧾 ${invoiceNo}</div>
-      <div class="modal-body-scroll" style="max-height:60dvh;">
-        ${items.map(item=>`
-          <div class="inv-group-item" data-id="${item.id}" style="border-radius:9px;margin-bottom:5px;border:1px solid var(--border);">
-            <div class="inv-group-item-name" style="font-size:13px;">${item.description||'(未命名)'}</div>
-            <div class="inv-group-item-amt">${fmt.money(item.amount)}</div>
-            <div class="inv-group-item-cat${item.status==='pending'?' pending':''}">${item.status==='pending'?'待分類':(item.category1||(item.category2?item.category2:'未分類'))}</div>
-          </div>`).join('')}
-      </div>
-      <div style="padding:10px 14px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
-        <span style="font-size:11px;color:var(--text3);">共 ${items.length} 項</span>
-        <span style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:var(--amber);">${fmt.money(total)}</span>
-      </div>`);
-    // Item click → edit
-    document.querySelectorAll('.inv-group-item[data-id]').forEach(el=>{
-      el.addEventListener('click',()=>{this.closeModal();this.openExpenseModal(el.dataset.id);});
+      <div class="modal-body">
+        <div class="cat-level-wrap">
+          <div class="cat-level-label">大分類（套用至全部 ${items.length} 項）</div>
+          <div class="edit-category-row" id="grp-cat1-row">${cat1Html}</div>
+          <div class="cat-sub-area${selectedCat?'':' hidden'}" id="grp-cat2-area">
+            <div class="cat-level-label" style="padding:6px 8px 2px">小分類</div>
+            <div class="edit-category-row" id="grp-cat2-row">${cat2Html}</div>
+          </div>
+        </div>
+
+        <div class="edit-amount-display" style="pointer-events:none;">
+          <span class="edit-amount-currency">TWD</span>
+          <input class="edit-amount-input" type="number" id="grp-amount" value="${total}" readonly style="color:var(--text2)">
+        </div>
+
+        <div class="edit-field-grid">
+          <div class="edit-field"><div class="edit-field-label">日期</div>
+            <div class="edit-field-value" style="color:var(--text3)">${fmt.date(date)}</div></div>
+          <div class="edit-field"><div class="edit-field-label">消費店家</div>
+            <div class="edit-field-value" style="color:var(--text3)">${store}</div></div>
+          <div class="edit-field edit-field-full"><div class="edit-field-label">發票號碼</div>
+            <div class="edit-field-value" style="color:var(--text3)">${invoiceNo}</div></div>
+        </div>
+
+        <div class="edit-notes-area">
+          <div class="edit-notes-label">消費項目明細（共 ${items.length} 項，${fmt.money(total)}）</div>
+          <textarea class="edit-notes-input" id="grp-desc" readonly style="color:var(--text2);min-height:80px;max-height:160px;overflow-y:auto;">${combinedDesc}</textarea>
+        </div>
+      </div>`;
+
+    overlay.classList.remove('hidden');
+    backdrop.classList.add('visible');
+    requestAnimationFrame(()=>content.classList.add('slide-in'));
+
+    // Cat1 selection
+    document.querySelectorAll('#grp-cat1-row .edit-cat-btn').forEach(btn=>{
+      btn.addEventListener('click',()=>{
+        document.querySelectorAll('#grp-cat1-row .edit-cat-btn').forEach(b=>b.classList.remove('selected'));
+        btn.classList.add('selected');
+        const cat1=btn.dataset.cat1;
+        const cat=cats.find(c=>c.name===cat1);
+        const area=document.getElementById('grp-cat2-area');
+        const row=document.getElementById('grp-cat2-row');
+        if(cat&&cat.subs?.length){
+          row.innerHTML=cat.subs.map(sub=>`
+            <button class="edit-cat-btn" data-cat1="${cat1}" data-cat2="${sub}">
+              <div class="edit-cat-circle">${getCatIcon(sub)}</div>
+              <div class="edit-cat-label">${sub}</div>
+            </button>`).join('');
+          area.classList.remove('hidden');
+          row.querySelectorAll('.edit-cat-btn').forEach(b=>{
+            b.addEventListener('click',()=>{row.querySelectorAll('.edit-cat-btn').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');});
+          });
+        } else { area.classList.add('hidden'); }
+      });
+    });
+    document.querySelectorAll('#grp-cat2-row .edit-cat-btn').forEach(btn=>{
+      btn.addEventListener('click',()=>{document.querySelectorAll('#grp-cat2-row .edit-cat-btn').forEach(b=>b.classList.remove('selected'));btn.classList.add('selected');});
+    });
+
+    document.getElementById('modal-close-btn')?.addEventListener('click',()=>this.closeModal());
+    backdrop.addEventListener('click',()=>this.closeModal(),{once:true});
+
+    document.getElementById('grp-save-btn')?.addEventListener('click',()=>{
+      const cat1Btn=document.querySelector('#grp-cat1-row .edit-cat-btn.selected');
+      const cat2Btn=document.querySelector('#grp-cat2-row .edit-cat-btn.selected');
+      const cat1=cat1Btn?.dataset.cat1||'';
+      const cat2=cat2Btn?.dataset.cat2||'';
+      if(!cat1){this.toast('請選擇大分類','error');return;}
+      // Apply to ALL items in this invoice
+      items.forEach(it=>{
+        this.store.updateExpense(it.id,{category1:cat1,category2:cat2,status:'categorized'});
+      });
+      this.toast(`✅ 已更新 ${items.length} 筆分類`,'success');
+      this.closeModal();this.renderView();
     });
   }
 
@@ -1346,7 +1477,7 @@ class App {
         <button class="stats-sort-btn${this._smSortMode==='time'?' active':''}" data-sm-sort="time">新增時間</button>
         <span style="margin-left:auto;font-size:10px;color:var(--text3);">${rules.length} 條規則</span>
       </div>
-      <div class="modal-body" style="padding:8px 0;gap:0;">
+      <div style="flex:1;overflow-y:auto;min-height:0;padding:6px 0;" id="sm-list-wrap">
         ${sorted.length?sorted.map(r=>`
           <div class="sm-rule-row" data-ridx="${r._idx}">
             <div class="sm-rule-store">${r.store}</div>
@@ -1515,7 +1646,7 @@ class App {
 
         <div class="edit-notes-area">
           <div class="edit-notes-label">消費項目說明</div>
-          <textarea class="edit-notes-input" id="f-desc" placeholder="請輸入消費項目說明">${e.description||''}</textarea>
+          <textarea class="edit-notes-input" id="f-desc" placeholder="請輸入消費項目說明" style="max-height:120px;overflow-y:auto;">${e.description||''}</textarea>
         </div>
 
         ${invHtml}
