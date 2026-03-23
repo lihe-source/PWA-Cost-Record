@@ -1,5 +1,5 @@
 /* ─────────────────────────────────────────────────────────────
-   Cost Record PWA — app.js  V0.9
+   Cost Record PWA — app.js  V1.0
    Modules: DataStore · InvoiceService · DriveService · App
 ───────────────────────────────────────────────────────────── */
 'use strict';
@@ -470,6 +470,7 @@ class App {
     this._editId = null;
     this._swipeStartX = null;
     this._swipeStartY = null;
+    this._isDarkMode = localStorage.getItem('theme') !== 'light';
   }
 
   // ─── INIT ────────────────────────────────────────────────────
@@ -489,6 +490,22 @@ class App {
     document.addEventListener('click',e=>{
       if(e.target.closest('#nav-add-btn')) this.openExpenseModal(null);
     });
+    // Apply saved theme
+    this._applyTheme(this._isDarkMode);
+    // Theme toggle button
+    document.getElementById('theme-toggle-btn')?.addEventListener('click',()=>{
+      this._isDarkMode = !this._isDarkMode;
+      localStorage.setItem('theme', this._isDarkMode ? 'dark' : 'light');
+      this._applyTheme(this._isDarkMode);
+    });
+  }
+
+  _applyTheme(dark) {
+    document.body.classList.toggle('light-mode', !dark);
+    const btn = document.getElementById('theme-toggle-btn');
+    if(btn) btn.textContent = dark ? '🌙' : '☀️';
+    // Also update canvas pie colors if on stats
+    if(this.view === 'stats') this.renderView();
   }
 
   _setupNav() {
@@ -1009,6 +1026,8 @@ class App {
     if(!canvas||!catEntries.length){canvas&&(canvas.style.display='none');return;}
     const ctx=canvas.getContext('2d');
     const cx=80,cy=80,outerR=72,innerR=42,midR=58;
+    const pieBg = getComputedStyle(document.body).getPropertyValue('--bg').trim()||'#181825';
+    const pieText = getComputedStyle(document.body).getPropertyValue('--text').trim()||'#eeeef8';
     ctx.clearRect(0,0,160,160);
     let angle=-Math.PI/2;
 
@@ -1029,12 +1048,12 @@ class App {
           const shade=si%2===0?color:`${color}88`;
           ctx.fillStyle=shade;
           ctx.fill();
-          ctx.strokeStyle='#181825'; ctx.lineWidth=1.5; ctx.stroke();
+          ctx.strokeStyle=pieBg; ctx.lineWidth=1.5; ctx.stroke();
           // Inner separator line for sub
           if(si>0){
             ctx.beginPath(); ctx.moveTo(cx,cy);
             ctx.lineTo(cx+Math.cos(subAngle)*outerR, cy+Math.sin(subAngle)*outerR);
-            ctx.strokeStyle='rgba(24,24,37,.8)'; ctx.lineWidth=1; ctx.stroke();
+            ctx.strokeStyle=pieBg+'cc'; ctx.lineWidth=1; ctx.stroke();
           }
           subAngle+=subSlice;
         });
@@ -1042,17 +1061,17 @@ class App {
         ctx.beginPath(); ctx.moveTo(cx,cy);
         ctx.arc(cx,cy,outerR,angle,angle+catSlice); ctx.closePath();
         ctx.fillStyle=color; ctx.fill();
-        ctx.strokeStyle='#181825'; ctx.lineWidth=1.5; ctx.stroke();
+        ctx.strokeStyle=pieBg; ctx.lineWidth=1.5; ctx.stroke();
       }
       angle+=catSlice;
     });
 
     // Donut hole
     ctx.beginPath(); ctx.arc(cx,cy,innerR,0,Math.PI*2);
-    ctx.fillStyle='#181825'; ctx.fill();
+    ctx.fillStyle=pieBg; ctx.fill();
 
     // Center text
-    ctx.fillStyle='#eeeef8'; ctx.textAlign='center';
+    ctx.fillStyle=pieText; ctx.textAlign='center';
     ctx.font='bold 11px DM Mono,monospace';
     ctx.fillText(fmt.money(total),cx,cy+4);
   }
@@ -1098,6 +1117,8 @@ class App {
     // Day panel buttons
     document.getElementById('add-expense-btn')?.addEventListener('click',()=>this.openExpenseModal(null));
     document.getElementById('invoice-fetch-btn')?.addEventListener('click',()=>this.openInvoiceImportModal());
+    // Swipe on ENTIRE home (home-top + home-bottom) for month change
+    this._attachHomeSwipe(document.getElementById('main-content'));
   }
 
   _changeMonth(delta) {
@@ -1123,6 +1144,29 @@ class App {
       if(this.calendarMonth>12){this.calendarMonth=1;this.calendarYear++;}
       this.renderView();
     }
+  }
+
+  _attachHomeSwipe(el) {
+    // Home-wide swipe for prev/next month — only trigger from left/right edges or fast swipe
+    if(!el) return;
+    let sx=null, sy=null;
+    el.addEventListener('touchstart', e=>{
+      sx = e.touches[0].clientX;
+      sy = e.touches[0].clientY;
+    },{passive:true});
+    el.addEventListener('touchend', e=>{
+      if(sx===null) return;
+      const dx = e.changedTouches[0].clientX - sx;
+      const dy = e.changedTouches[0].clientY - sy;
+      // Only trigger on mostly-horizontal swipe from near edge (within 30px of screen edge)
+      // OR fast wide swipe (>120px horizontal)
+      const isEdgeSwipe = sx < 30 || sx > window.innerWidth - 30;
+      const isWideSwipe = Math.abs(dx) > 120 && Math.abs(dx) > Math.abs(dy) * 2;
+      if((isEdgeSwipe || isWideSwipe) && Math.abs(dx) > Math.abs(dy)) {
+        this._changeMonth(dx < 0 ? 1 : -1);
+      }
+      sx = null; sy = null;
+    },{passive:true});
   }
 
   _attachSwipe(el) {
@@ -1654,6 +1698,24 @@ class App {
     backdrop.classList.add('visible');
     requestAnimationFrame(()=>content.classList.add('slide-in'));
 
+    // Swipe right to close (with dirty-check)
+    this._attachModalSwipeBack(content, ()=>{
+      // Check if form is dirty
+      const origAmt = String(e.amount||'');
+      const origDesc = e.description||'';
+      const origStore = e.store||'';
+      const curAmt = document.getElementById('f-amount')?.value||'';
+      const curDesc = document.getElementById('f-desc')?.value.trim()||'';
+      const curStore = document.getElementById('f-store')?.value.trim()||'';
+      const cat1 = document.querySelector('#cat1-row .edit-cat-btn.selected')?.dataset.cat1||'';
+      const isDirty = curAmt!==origAmt || curDesc!==origDesc || curStore!==origStore || (cat1 && !isEdit) || (cat1 !== (e.category1||'') && isEdit);
+      if(isDirty){
+        const choice = confirm('是否要儲存已編輯的內容？\n確定 → 儲存並關閉\n取消 → 不儲存直接關閉');
+        if(choice){ this._saveExpense(e, isEdit); return; }
+      }
+      this.closeModal();
+    });
+
     // Cat1 selection → show cat2
     document.querySelectorAll('#cat1-row .edit-cat-btn').forEach(btn=>{
       btn.addEventListener('click',()=>{
@@ -1703,6 +1765,38 @@ class App {
       this.store.deleteExpense(this._editId);
       this.toast('已刪除','success');this.closeModal(()=>this.renderView());
     });
+  }
+
+  _attachModalSwipeBack(el, onClose) {
+    if(!el) return;
+    let sx=null, sy=null, dx=0;
+    el.addEventListener('touchstart', e=>{
+      // Only start if touch begins near left edge (within 30px)
+      if(e.touches[0].clientX > 40) return;
+      sx = e.touches[0].clientX;
+      sy = e.touches[0].clientY;
+      dx = 0;
+    },{passive:true});
+    el.addEventListener('touchmove', e=>{
+      if(sx===null) return;
+      dx = e.touches[0].clientX - sx;
+      const dy = e.touches[0].clientY - sy;
+      if(Math.abs(dx) > Math.abs(dy) && dx > 0){
+        // Drag the modal to the right
+        const progress = Math.min(dx / 200, 1);
+        el.style.transform = `translateX(${Math.min(dx, 200)}px)`;
+        el.style.opacity = String(1 - progress * 0.3);
+      }
+    },{passive:true});
+    el.addEventListener('touchend', e=>{
+      if(sx===null) return;
+      el.style.transform = '';
+      el.style.opacity = '';
+      if(dx > 80){
+        onClose();
+      }
+      sx = null; sy = null; dx = 0;
+    },{passive:true});
   }
 
   _saveExpense(e,isEdit) {

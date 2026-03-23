@@ -1,4 +1,4 @@
-/* Cost Record PWA — styles.css V0.9 */
+/* Cost Record PWA — styles.css V1.0 */
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=DM+Mono:wght@400;500&display=swap');
 :root{
   --bg:#181825;--bg2:#1e1e2e;--bg3:#252538;--bg4:#2e2e45;
@@ -14,6 +14,17 @@
   --nav-h:56px;--header-h:44px;
   --font-main:'Noto Sans TC',sans-serif;--font-mono:'DM Mono',monospace;
 }
+/* Light mode */
+body.light-mode{
+  --bg:#f5f5f7;--bg2:#ffffff;--bg3:#eaeaf0;--bg4:#dddde8;
+  --card:#ffffff;--card2:#f0f0f5;
+  --border:rgba(0,0,0,0.08);--border2:rgba(0,0,0,0.14);
+  --amber:#d97706;--amber-light:#b45309;--amber-dim:rgba(217,119,6,0.1);--amber-glow:rgba(217,119,6,0.3);
+  --red:#dc2626;--red-dim:rgba(220,38,38,0.1);
+  --green:#16a34a;--green-dim:rgba(22,163,74,0.1);
+  --blue:#2563eb;--blue-dim:rgba(37,99,235,0.1);
+  --text:#1a1a2e;--text2:#555570;--text3:#8888aa;
+}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 html,body{height:100%;overflow:hidden;-webkit-text-size-adjust:100%}
 body{font-family:var(--font-main);background:var(--bg);color:var(--text);font-size:14px;-webkit-font-smoothing:antialiased;overscroll-behavior:none}
@@ -21,7 +32,8 @@ input,select,textarea{font-size:16px!important;-webkit-text-size-adjust:100%}
 
 /* ── App Shell ── */
 #app{display:flex;flex-direction:column;height:100dvh;max-width:430px;margin:0 auto;background:var(--bg);
-  padding-top:env(safe-area-inset-top);padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
+  padding-top:env(safe-area-inset-top);padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right);
+  box-sizing:border-box}
 
 /* ── Header ── */
 #app-header{height:var(--header-h);display:flex;align-items:center;justify-content:space-between;
@@ -30,6 +42,10 @@ input,select,textarea{font-size:16px!important;-webkit-text-size-adjust:100%}
 .header-right{display:flex;align-items:center;gap:8px}
 #version-badge{font-family:var(--font-mono);font-size:10px;color:var(--amber);background:var(--amber-dim);
   padding:2px 7px;border-radius:20px;border:1px solid rgba(245,158,11,.2)}
+#theme-toggle-btn{background:var(--bg3);border:1px solid var(--border);border-radius:20px;
+  cursor:pointer;font-size:14px;width:30px;height:30px;display:flex;align-items:center;justify-content:center;
+  transition:all .2s;flex-shrink:0}
+#theme-toggle-btn:hover{background:var(--bg4)}
 
 /* ── Main Content ── */
 #main-content{flex:1;overflow-y:auto;overflow-x:hidden;scroll-behavior:smooth;min-height:0}
@@ -43,7 +59,7 @@ input,select,textarea{font-size:16px!important;-webkit-text-size-adjust:100%}
 .home-bottom::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:1px}
 
 /* ── Bottom Nav ── */
-#bottom-nav{height:var(--nav-h);padding-bottom:env(safe-area-inset-bottom);display:flex;align-items:stretch;
+#bottom-nav{height:calc(var(--nav-h) + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);display:flex;align-items:stretch;
   background:var(--bg2);border-top:1px solid var(--border);flex-shrink:0;position:relative}
 .nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
   background:none;border:none;cursor:pointer;color:var(--text3);font-size:9px;font-family:var(--font-main);
@@ -52,7 +68,7 @@ input,select,textarea{font-size:16px!important;-webkit-text-size-adjust:100%}
 .nav-btn.active{color:var(--amber)}
 .nav-btn.active::after{content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);
   width:18px;height:2px;background:var(--amber);border-radius:0 0 2px 2px}
-.nav-fab{flex:1.1;display:flex;align-items:center;justify-content:center;cursor:pointer;padding-bottom:env(safe-area-inset-bottom)}
+.nav-fab{flex:1.1;display:flex;align-items:center;justify-content:center;cursor:pointer;}
 .nav-fab-circle{width:48px;height:48px;border-radius:50%;background:var(--amber);display:flex;
   align-items:center;justify-content:center;font-size:26px;color:var(--bg);
   box-shadow:0 3px 16px var(--amber-glow);transition:transform .18s,box-shadow .18s;margin-top:-14px}
@@ -436,8 +452,9 @@ input,select,textarea{font-size:16px!important;-webkit-text-size-adjust:100%}
 .stats-cat-toggle{font-size:10px;color:var(--text3);transition:transform .2s;flex-shrink:0}
 .stats-cat-toggle.open{transform:rotate(180deg)}
 /* Sub item list */
-.stats-cat-sub-list{display:none;flex-direction:column;border-top:1px solid var(--border)}
-.stats-cat-sub-list.open{display:flex}
+.stats-cat-sub-list{display:none;flex-direction:column;border-top:1px solid var(--border);max-height:280px;overflow-y:auto;}
+.stats-cat-sub-list.open{display:flex;}
+.stats-cat-sub-list::-webkit-scrollbar{width:3px}.stats-cat-sub-list::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:2px}
 .stats-expense-row{display:flex;align-items:center;gap:7px;padding:6px 12px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s}
 .stats-expense-row:hover{background:var(--bg3)}
 .stats-expense-row:last-child{border-bottom:none}
@@ -527,3 +544,14 @@ input,select,textarea{font-size:16px!important;-webkit-text-size-adjust:100%}
 .cal-grid-wk{min-height:220px}
 /* Month nav larger spacing */
 .month-nav{padding:8px 12px 3px}
+
+/* V1.0: swipe-back edge hint on modal */
+#modal-content::before{
+  content:'';position:absolute;left:0;top:0;bottom:0;width:5px;
+  background:linear-gradient(90deg,rgba(245,158,11,.15),transparent);
+  z-index:1;pointer-events:none;
+}
+/* Light mode canvas override */
+body.light-mode #stats-pie{filter:drop-shadow(0 1px 3px rgba(0,0,0,.15))}
+/* Month nav larger */
+.month-nav-title{font-size:16px;font-weight:700;letter-spacing:.02em}
