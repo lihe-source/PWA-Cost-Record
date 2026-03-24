@@ -1,17 +1,45 @@
-/* app.js */
 'use strict';
 
 const STORAGE_KEY   = 'cost_record_v1';
 const DRIVE_PREFIX  = 'cost-record-backup';
+const DRIVE_FOLDER_NAME = 'PWA-Cost-Record';
+
 const DEFAULT_CATEGORIES = [
-  { name: '平日消費', subs: ['早餐', '午餐', '晚餐', '點心', '飲料'] },
-  { name: '家庭消費', subs: ['市場', '家電', '出遊'] }
+  { name: '飲食', subs: ['早餐', '午餐', '晚餐', '飲料', '點心', '宵夜'] },
+  { name: '交通', subs: ['捷運', '公車', '火車', '高鐵', '加油費', '停車費', '摩托車'] }
 ];
+
+// 擴充主類別預設圖示
+const MAIN_CAT_ICONS = {
+  '飲食': '🍽️', '交通': '🚗', '購物': '🛍️', '娛樂': '🎬', '居家': '🏠',
+  '醫療': '🏥', '學習': '📚', '人際': '🤝', '財務': '💰', '其他': '📦',
+  '平日消費': '📅', '家庭消費': '🏡'
+};
+
+// 擴充子類別預設圖示
 const CAT_ICONS = {
-  '早餐': '🍳', '午餐': '🍱', '晚餐': '🍜', '點心': '🧁', '飲料': '🧋',
-  '市場': '🛒', '家電': '📺', '出遊': '🚗',
+  // 飲食
+  '早餐': '🍳', '午餐': '🍱', '晚餐': '🍜', '點心': '🧁', '飲料': '🧋', '宵夜': '🍗', '水果': '🍎', '咖啡': '☕',
+  // 交通
+  '捷運': '🚇', '公車': '🚌', '火車': '🚆', '高鐵': '🚄', '計程車': '🚕', '加油費': '⛽', '停車費': '🅿️', '摩托車': '🛵', '保養': '🔧',
+  // 購物
+  '衣服': '👕', '鞋子': '👟', '配件': '👜', '保養品': '🧴', '3C': '📱', '市場': '🛒', '日用品': '🧻', '生鮮': '🥩',
+  // 居家
+  '房租': '🔑', '水電': '💧', '瓦斯': '🔥', '網路': '🌐', '電信': '📞', '裝潢': '🔨', '家電': '📺', '家具': '🛋️',
+  // 醫療/健康
+  '看診': '🩺', '藥品': '💊', '保健食品': '🌿', '運動': '🏃',
+  // 娛樂
+  '電影': '🍿', '遊戲': '🎮', '旅遊': '✈️', '聚餐': '🍻', '展覽': '🖼️',
+  // 狀態
   '待分類': '📋', '其他': '💰'
 };
+
+function getCatIcon(cat1, cat2) {
+  if (cat2 && CAT_ICONS[cat2]) return CAT_ICONS[cat2];
+  if (cat1 && MAIN_CAT_ICONS[cat1]) return MAIN_CAT_ICONS[cat1];
+  return '📌'; // 若都找不到，給個預設圖釘
+}
+
 const GEMINI_MODELS = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash', 'gemini-2.0-pro'];
 
 class DataStore {
@@ -153,24 +181,57 @@ class DriveService {
       tc.requestAccessToken({ prompt: 'select_account' });
     });
   }
+
+  // 取得或建立 PWA-Cost-Record 資料夾
+  async _getOrCreateFolder() {
+    const token = await this.getToken();
+    const q = encodeURIComponent(`name='${DRIVE_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`, { 
+      headers: { Authorization: `Bearer ${token}` } 
+    });
+    const data = await res.json();
+    if (data.files && data.files.length > 0) return data.files[0].id;
+    
+    // 如果沒有資料夾，建立一個
+    const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: DRIVE_FOLDER_NAME, mimeType: 'application/vnd.google-apps.folder' })
+    });
+    if (!createRes.ok) throw new Error('無法在 Drive 建立資料夾');
+    const createData = await createRes.json();
+    return createData.id;
+  }
+
   async listBackups() {
     const token = await this.getToken();
-    const q = encodeURIComponent(`name contains '${DRIVE_PREFIX}' and trashed=false`);
+    // 確保只抓取特定資料夾內的檔案，或檔名符合的檔案
+    const q = encodeURIComponent(`name contains '${DRIVE_PREFIX}' and mimeType='application/json' and trashed=false`);
     const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&orderBy=modifiedTime desc&pageSize=5&fields=files(id,name,modifiedTime,size)`, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) throw new Error(`Drive API ${res.status}`);
     return (await res.json()).files || [];
   }
+
   async uploadBackup(data) {
     const token = await this.getToken();
+    const folderId = await this._getOrCreateFolder();
+    
     const fileName = `${DRIVE_PREFIX}-${new Date().toISOString().slice(0,19).replace(/[T:]/g,'-')}.json`;
     const boundary = '-------cost_record_backup';
-    const body = [`--${boundary}`, 'Content-Type: application/json; charset=UTF-8', '', JSON.stringify({ name: fileName, mimeType: 'application/json' }), `--${boundary}`, 'Content-Type: application/json', '', JSON.stringify(data, null, 2), `--${boundary}--`].join('\r\n');
+    const metadata = { 
+      name: fileName, 
+      mimeType: 'application/json',
+      parents: [folderId] // 指定上傳到該資料夾內
+    };
+
+    const body = [`--${boundary}`, 'Content-Type: application/json; charset=UTF-8', '', JSON.stringify(metadata), `--${boundary}`, 'Content-Type: application/json', '', JSON.stringify(data, null, 2), `--${boundary}--`].join('\r\n');
     const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
       method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': `multipart/related; boundary=${boundary}` }, body
     });
     if (!res.ok) throw new Error(`Upload failed ${res.status}`);
     return res.json();
   }
+
   async downloadBackup(fileId) {
     const token = await this.getToken();
     const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers: { Authorization: `Bearer ${token}` } });
@@ -185,7 +246,6 @@ const fmt = {
   monthLabel: (y,m) => `${y} 年 ${m} 月`,
   today: () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 };
-function getCatIcon(cat2) { return CAT_ICONS[cat2]||CAT_ICONS['其他']; }
 const CHART_COLORS = ['#f59e0b','#3b82f6','#22c55e','#f43f5e','#a78bfa','#f97316','#2dd4bf','#f472b6','#84cc16','#fb923c'];
 
 class App {
@@ -330,7 +390,9 @@ class App {
   }
 
   _buildSingleCard(e) {
-    const icon=getCatIcon(e.category2||(e.status==='pending'?'待分類':'其他')), title=e.category2||e.category1||(e.status==='pending'?'待分類':'未分類');
+    // 改用新的 getCatIcon(cat1, cat2)
+    const icon = getCatIcon(e.category1, e.category2); 
+    const title = e.category2 || e.category1 || (e.status==='pending'?'待分類':'未分類');
     return `<div class="ref-card" data-id="${e.id}"><div class="ref-card-icon">${icon}</div><div class="ref-card-body"><div class="ref-card-title">${title}</div><div class="ref-card-sub">${e.description||'(未命名)'}</div><div class="ref-card-tags">${e.status==='pending'?`<span class="ref-tag pending">待分類</span>`:''}${e.category1&&e.status!=='pending'?`<span class="ref-tag">${e.category1}</span>`:''}${e.source==='invoice'?`<span class="ref-tag inv">🧾</span>`:''}${e.store?`<span class="ref-tag store">🏪 ${e.store}</span>`:''}</div></div><div class="ref-card-right"><div class="ref-card-amount">${fmt.money(e.amount)}</div></div></div>`;
   }
 
@@ -370,14 +432,14 @@ class App {
     return `<div class="settings-wrap">
       <div class="settings-section"><div class="settings-section-title">分類管理</div><div class="cat-tree" id="cat-tree">${cats.map((cat,ci)=>this._buildCatNode(cat,ci)).join('')}</div><div style="padding:8px 12px;"><button class="btn-primary" id="add-parent-cat-btn" style="width:100%;">＋ 新增大分類</button></div></div>
       <div class="settings-section"><div class="settings-section-title">🏪 店家自動分類</div><div class="settings-item" id="open-store-mapping-btn"><div><div class="settings-item-label">規則設定</div><div class="settings-item-sub">共 ${storeMap.length} 條規則</div></div><span class="settings-item-arrow">›</span></div></div>
-      <div class="settings-section"><div class="settings-section-title">🤖 Gemini AI</div><div style="padding:10px 12px;display:flex;flex-direction:column;gap:8px;"><div class="form-group"><label class="form-label">API Key</label><div class="api-key-wrap"><input class="form-input" id="s-geminiKey" type="password" placeholder="Gemini API Key" value="${s.geminiApiKey||''}"><button class="api-key-toggle" data-target="s-geminiKey">👁</button></div></div><div class="form-group"><label class="form-label">模型</label><select class="form-select" id="s-geminiModel">${GEMINI_MODELS.map(m=>`<option value="${m}" ${s.geminiModel===m?'selected':''}>${m}</option>`).join('')}</select></div><button class="btn-primary" id="save-gemini-settings-btn">儲存 AI 設定</button></div></div>
       <div class="settings-section"><div class="settings-section-title">☁️ Google Drive 同步</div><div style="padding:10px 12px;display:flex;flex-direction:column;gap:8px;"><div class="form-group"><label class="form-label">OAuth Client ID</label><input class="form-input" id="s-gClientId" placeholder="填入 Google Cloud 申請的 Client ID" value="${s.googleClientId||''}"></div><button class="btn-primary" id="save-drive-settings-btn">儲存憑證</button>${lastSync?`<div class="last-sync-info">上次備份時間：${lastSync}</div>`:''}<div class="backup-action-row"><button class="btn-primary" id="drive-upload-btn">☁️ 建立新備份</button><button class="btn-secondary" id="drive-list-btn">📂 選擇備份還原</button></div><div id="drive-backup-list" class="backup-list"></div></div></div>
       <div class="settings-section"><div class="settings-section-title">💾 系統設定</div><div style="padding:10px 12px;display:flex;flex-direction:column;gap:8px;"><div class="backup-action-row"><button class="btn-primary" id="import-moze-btn">💼 匯入 MOZE</button><button class="btn-secondary" id="export-local-btn">📤 匯出</button><button class="btn-secondary" id="import-local-btn">📥 匯入</button></div><button class="btn-danger" id="clear-data-btn">⚠️ 清除所有資料</button></div></div>
     </div>`;
   }
 
   _buildCatNode(cat,ci) {
-    return `<div class="cat-parent" data-ci="${ci}"><div class="cat-parent-row"><button class="cat-toggle" data-ci="${ci}">▶</button><div class="cat-parent-name">${cat.name}</div><div class="cat-action-btns"><button class="cat-action-btn" data-action="rename-cat" data-ci="${ci}">改名</button><button class="cat-action-btn danger" data-action="del-cat" data-ci="${ci}">刪除</button></div></div><div class="cat-children" id="cat-children-${ci}">${(cat.subs||[]).map((sub,si)=>`<div class="cat-child-row" data-ci="${ci}" data-si="${si}"><div class="cat-child-name">${getCatIcon(sub)} ${sub}</div><div class="cat-action-btns"><button class="cat-action-btn" data-action="rename-sub" data-ci="${ci}" data-si="${si}">改名</button><button class="cat-action-btn danger" data-action="del-sub" data-ci="${ci}" data-si="${si}">刪除</button></div></div>`).join('')}<div class="cat-add-row"><input class="cat-add-input" id="sub-input-${ci}" placeholder="新增小分類…"><button class="btn-primary" data-action="add-sub" data-ci="${ci}" style="padding:5px;">新增</button></div></div></div>`;
+    const parentIcon = getCatIcon(cat.name, null);
+    return `<div class="cat-parent" data-ci="${ci}"><div class="cat-parent-row"><button class="cat-toggle" data-ci="${ci}">▶</button><div class="cat-parent-name">${parentIcon} ${cat.name}</div><div class="cat-action-btns"><button class="cat-action-btn" data-action="rename-cat" data-ci="${ci}">改名</button><button class="cat-action-btn danger" data-action="del-cat" data-ci="${ci}">刪除</button></div></div><div class="cat-children" id="cat-children-${ci}">${(cat.subs||[]).map((sub,si)=>`<div class="cat-child-row" data-ci="${ci}" data-si="${si}"><div class="cat-child-name">${getCatIcon(cat.name, sub)} ${sub}</div><div class="cat-action-btns"><button class="cat-action-btn" data-action="rename-sub" data-ci="${ci}" data-si="${si}">改名</button><button class="cat-action-btn danger" data-action="del-sub" data-ci="${ci}" data-si="${si}">刪除</button></div></div>`).join('')}<div class="cat-add-row"><input class="cat-add-input" id="sub-input-${ci}" placeholder="新增小分類…"><button class="btn-primary" data-action="add-sub" data-ci="${ci}" style="padding:5px;">新增</button></div></div></div>`;
   }
 
   _buildStats() { /* Omitted for brevity, remains identical to V1.0 internally */ return `<div class="stats-wrap"><div class="stats-month-nav"><button class="stats-month-btn" id="stats-prev">‹</button><div class="stats-month-display" id="stats-month-label">${this.statsYear} 年 ${this.statsMonth} 月</div><button class="stats-month-btn" id="stats-next">›</button><button class="stats-custom-btn${this.statsCustom?' active':''}" id="stats-custom-btn">自訂</button></div><div class="stats-custom-range${this.statsCustom?' open':''}" id="stats-custom-range"><input class="stats-range-input" type="date" id="stats-from" value="${this._statsFromDefault()}"><span class="stats-range-sep">—</span><input class="stats-range-input" type="date" id="stats-to" value="${fmt.today()}"><button class="stats-range-btn" id="stats-range-apply">套用</button></div><div id="stats-content"></div></div>`; }
@@ -427,11 +489,6 @@ class App {
     document.querySelectorAll('[data-action]').forEach(btn=>btn.addEventListener('click',()=>this._handleCatAction(btn.dataset.action,+btn.dataset.ci,btn.dataset.si!==undefined?+btn.dataset.si:null)));
     document.getElementById('add-parent-cat-btn')?.addEventListener('click',()=>this._promptCatName('新增大分類','',name=>{this.store.data.categories.push({name,subs:[]});this.store.save();this.renderView();}));
     document.getElementById('open-store-mapping-btn')?.addEventListener('click',()=>this._openStoreMappingPage());
-    document.getElementById('save-gemini-settings-btn')?.addEventListener('click',()=>{
-      this.store.data.settings.geminiApiKey=document.getElementById('s-geminiKey').value.trim();
-      this.store.data.settings.geminiModel=document.getElementById('s-geminiModel').value;
-      this.store.save(); this.toast('已儲存','success');
-    });
     document.getElementById('save-drive-settings-btn')?.addEventListener('click',()=>{
       const cid=document.getElementById('s-gClientId').value.trim();
       this.store.data.settings.googleClientId=cid; this.store.save();
@@ -493,7 +550,6 @@ class App {
   _showCsvPreviewModal(rows) { /* Omitted */ }
   _importCsvRows(rows) { /* Omitted */ }
 
-  // ── MOZE CSV IMPORT ──
   _parseRobustCSV(text) {
     const rows = []; let cur = [], field = '', inQ = false;
     for (let i = 0; i < text.length; i++) {
@@ -590,6 +646,7 @@ class App {
     };
     reader.readAsText(file); event.target.value='';
   }
+  
   async driveUpload() {
     const btn=document.getElementById('drive-upload-btn'); if(btn){btn.textContent='上傳中…';btn.disabled=true;}
     try {
@@ -597,15 +654,16 @@ class App {
       const data=this.store.export(); data._exportedAt=new Date().toISOString();
       await this.drive.uploadBackup(data);
       this.store.data.lastSync=new Date().toLocaleString('zh-TW'); this.store.save();
-      this.toast('已上傳備份至 Google Drive','success'); this.renderView();
+      this.toast('已上傳備份至 Google Drive 資料夾','success'); this.renderView();
     } catch(err){this.toast('上傳失敗：'+err.message,'error');} finally{if(btn){btn.textContent='☁️ 建立新備份';btn.disabled=false;}}
   }
+  
   async driveList() {
     const btn=document.getElementById('drive-list-btn'); if(btn){btn.textContent='載入中…';btn.disabled=true;}
     const listEl=document.getElementById('drive-backup-list');
     try {
       await this.drive.init(this.store.data.settings.googleClientId);
-      const files=await this.drive.listBackups(); // Already limits to 5, sorts descending
+      const files=await this.drive.listBackups();
       if(!listEl) return;
       if(!files.length){listEl.innerHTML='<p style="font-size:10px;color:var(--text3);">尚無雲端備份</p>';return;}
       listEl.innerHTML=files.map(f=>`
