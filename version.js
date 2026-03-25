@@ -1,3 +1,4 @@
-const APP_VERSION = 'V1.3';
-const APP_BUILD   = '1_3';
-const CACHE_NAME  = 'cost-record-v1_3';
+// Cost Record PWA - Version Control
+const APP_VERSION = 'V1.0';
+const APP_BUILD   = '1_0';
+const CACHE_NAME  = 'cost-record-v1_0';
