@@ -1,11 +1,11 @@
 {
   "name": "記帳本 Cost Record",
   "short_name": "記帳本",
-  "description": "個人記帳 PWA，支援 Google Drive 備份、分類 icon 與多幣值記錄",
+  "description": "個人記帳 PWA，支援電子發票匯入與 Google Drive 雲端備份",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#eef3ef",
-  "theme_color": "#18864d",
+  "background_color": "#0f172a",
+  "theme_color": "#f59e0b",
   "orientation": "portrait",
   "icons": [
     {

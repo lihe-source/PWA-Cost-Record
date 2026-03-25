@@ -2,27 +2,43 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#18864d">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#1a1a28">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="記帳本">
   <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="stylesheet" href="styles.css">
   <title>記帳本</title>
 </head>
 <body>
-  <div id="app">
-    <header id="app-header">記帳本</header>
-    <main id="main-content"></main>
-    <nav id="bottom-nav">
-      <button class="nav-btn active" data-view="home"><span>首頁</span></button>
-      <button class="nav-btn" data-view="search"><span>搜尋</span></button>
-      <div class="nav-fab" id="nav-add-btn"><div class="nav-fab-circle">＋</div></div>
-      <button class="nav-btn" data-view="stats"><span>統計</span></button>
-      <button class="nav-btn" data-view="settings"><span>設定</span></button>
-    </nav>
-  </div>
-  <div id="modal-overlay" class="hidden"><div id="modal-content"></div></div>
-  <div id="toast"></div>
-  <script src="version.js"></script>
-  <script src="app.js"></script>
+<div id="update-banner">🔄 發現新版本，點此立即更新</div>
+<div id="app">
+  <header id="app-header">
+    <h1>記帳本</h1>
+    <div class="header-right">
+      <button id="theme-toggle-btn" aria-label="切換主題">🌙</button>
+      <span id="version-badge">V1.1</span>
+    </div>
+  </header>
+  <main id="main-content">
+    <div class="empty-state" style="margin-top:80px;"><div class="icon">⏳</div><p>載入中…</p></div>
+  </main>
+  <nav id="bottom-nav">
+    <button class="nav-btn active" data-view="home"><span class="icon">🗂</span><span>帳本</span></button>
+    <button class="nav-btn" data-view="search"><span class="icon">🔍</span><span>搜尋</span></button>
+    <div class="nav-fab" id="nav-add-btn"><div class="nav-fab-circle">＋</div></div>
+    <button class="nav-btn" data-view="stats"><span class="icon">📊</span><span>統計</span></button>
+    <button class="nav-btn" data-view="settings"><span class="icon">⚙️</span><span>設定</span></button>
+  </nav>
+</div>
+<div id="modal-overlay" class="hidden">
+  <div id="modal-backdrop"></div>
+  <div id="modal-content"></div>
+</div>
+<div id="toast"></div>
+<script src="version.js"></script>
+<script src="app.js"></script>
 </body>
 </html>
