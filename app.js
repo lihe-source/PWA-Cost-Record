@@ -1,5 +1,5 @@
 /* ─────────────────────────────────────────────────────────────
-   Cost Record PWA — app.js  V2.4
+   Cost Record PWA — app.js  V2.5
    Modules: DataStore · DriveService · CurrencyService · App
 ───────────────────────────────────────────────────────────── */
 'use strict';
@@ -516,7 +516,7 @@ const CURRENCIES = {
 const CHART_COLORS = ['#f59e0b','#3b82f6','#22c55e','#f43f5e','#a78bfa','#f97316','#2dd4bf','#f472b6','#84cc16','#fb923c'];
 
 // ══════════════════════════════════════════════════════════════
-// MAIN APP  V2.2
+// MAIN APP  V2.5
 // ══════════════════════════════════════════════════════════════
 class App {
   constructor() {
@@ -613,53 +613,72 @@ class App {
 
   _registerSW() {
     if(!('serviceWorker' in navigator)) return;
-    navigator.serviceWorker.register('./service-worker.js').then(reg=>{
-      // Listen for SW update found (new SW installing)
-      reg.addEventListener('updatefound',()=>{
-        const newWorker = reg.installing;
-        newWorker?.addEventListener('statechange',()=>{
-          if(newWorker.state==='installed' && navigator.serviceWorker.controller)
-            this._showUpdateBanner();
+
+    navigator.serviceWorker.register('./service-worker.js', { updateViaCache: 'none' })
+      .then(reg => {
+        // When a new SW is found, it installs & activates automatically (skipWaiting in SW)
+        reg.addEventListener('updatefound', () => {
+          const nw = reg.installing;
+          nw?.addEventListener('statechange', () => {
+            if (nw.state === 'activated') {
+              // New version is live — reload to get fresh files
+              window.location.reload();
+            }
+          });
         });
-      });
-      // Periodic check: poll for updates every 60 seconds
-      setInterval(()=>reg.update(), 60000);
-      // Also check version.js directly for version mismatch (handles GitHub Pages CDN cache)
-      this._checkRemoteVersion();
-      setInterval(()=>this._checkRemoteVersion(), 120000);
-    });
-    // When SW controller changes (new SW activated), auto reload
-    navigator.serviceWorker.addEventListener('controllerchange',()=>window.location.reload());
+        // Poll for updates: every 30s check GitHub for a new SW
+        setInterval(() => reg.update(), 30000);
+        // Also do a version.js fetch comparison (handles CDN edge caching)
+        this._checkRemoteVersion();
+        setInterval(() => this._checkRemoteVersion(), 60000);
+      })
+      .catch(err => console.warn('SW register failed:', err));
+
+    // If SW controller swaps out (new SW took over), reload immediately
+    navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload());
   }
 
   _showUpdateBanner() {
     const b = document.getElementById('update-banner');
-    if(b) b.style.display='block';
+    if(b) b.style.display = 'block';
   }
 
   async _checkRemoteVersion() {
     try {
-      const r = await fetch('./version.js?_=' + Date.now(), {cache:'no-store'});
-      if(!r.ok) return;
+      const r = await fetch('./version.js?_=' + Date.now(), { cache: 'no-store' });
+      if (!r.ok) return;
       const text = await r.text();
       const m = text.match(/APP_VERSION\s*=\s*['"]([^'"]+)['"]/);
-      if(m && m[1] && m[1] !== APP_VERSION) {
-        this._showUpdateBanner();
+      if (m && m[1] && m[1] !== APP_VERSION) {
+        // Version mismatch — trigger SW update which will auto-reload
+        if (navigator.serviceWorker?.controller) {
+          const reg = await navigator.serviceWorker.getRegistration();
+          reg?.update();
+        } else {
+          window.location.reload();
+        }
       }
-    } catch(e) { /* offline */ }
+    } catch(e) { /* offline, ignore */ }
   }
 
   renderView() {
-    const main=document.getElementById('main-content');
-    const h1=document.querySelector('#app-header h1');
-    main.classList.toggle('home-mode',this.view==='home');
-    switch(this.view){
-      case 'home':     main.innerHTML=this._buildHome();     h1.textContent='記帳本'; break;
-      case 'search':   main.innerHTML=this._buildSearch();   h1.textContent='搜尋';   break;
-      case 'settings': main.innerHTML=this._buildSettings(); h1.textContent='設定';   break;
-      case 'stats':    main.innerHTML=this._buildStats();    h1.textContent='統計';   break;
+    try {
+      const main=document.getElementById('main-content');
+      const h1=document.querySelector('#app-header h1');
+      if(!main) return;
+      main.classList.toggle('home-mode',this.view==='home');
+      switch(this.view){
+        case 'home':     main.innerHTML=this._buildHome();     if(h1)h1.textContent='記帳本'; break;
+        case 'search':   main.innerHTML=this._buildSearch();   if(h1)h1.textContent='搜尋';   break;
+        case 'settings': main.innerHTML=this._buildSettings(); if(h1)h1.textContent='設定';   break;
+        case 'stats':    main.innerHTML=this._buildStats();    if(h1)h1.textContent='統計';   break;
+      }
+      this._attachViewEvents();
+    } catch(err) {
+      console.error('renderView error:', err);
+      const main=document.getElementById('main-content');
+      if(main) main.innerHTML=`<div class="empty-state" style="margin-top:80px;"><div class="icon">⚠️</div><p style="color:var(--red);font-size:12px;">載入失敗：${err.message}<br><small>請重新整理頁面</small></p></div>`;
     }
-    this._attachViewEvents();
   }
 
   // ─── CURRENCY PICKER ──────────────────────────────────────────
@@ -1853,7 +1872,6 @@ class App {
         </div>
         ${isEdit?`<div style="padding:10px 0 16px;flex-shrink:0"><button class="edit-delete-btn" id="modal-delete-btn">🗑 刪除這筆消費</button></div>`:'<div style="padding-bottom:16px;flex-shrink:0"></div>'}
       </div>`;
-      </div>`;
     overlay.classList.remove('hidden');backdrop.classList.add('visible');
     requestAnimationFrame(()=>content.classList.add('slide-in'));
     this._attachModalSwipeBack(content,()=>{
@@ -2117,5 +2135,23 @@ class App {
 }
 
 // ── BOOT ──────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded',()=>{window._app=new App();window._app.init();});
+// ── Boot: resilient for iOS PWA (DOMContentLoaded may fire late or early)
+(function boot() {
+  function startApp() {
+    if (window._app) return; // already started
+    try {
+      window._app = new App();
+      window._app.init();
+    } catch(err) {
+      console.error('App boot error:', err);
+      const m = document.getElementById('main-content');
+      if (m) m.innerHTML = `<div class="empty-state" style="margin-top:80px;"><div class="icon">⚠️</div><p style="color:#f43f5e;font-size:12px;">啟動失敗：${err.message}<br><small>請嘗試重新整理</small></p></div>`;
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startApp);
+  } else {
+    startApp(); // DOM already ready
+  }
+})();
 

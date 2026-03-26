@@ -6,10 +6,12 @@
   <meta name="theme-color" content="#10b981">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="format-detection" content="telephone=no">
   <meta name="apple-mobile-web-app-title" content="記帳本">
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="stylesheet" href="styles.css">
+  <style>body,html{overscroll-behavior:none;}</style>
   <title>記帳本</title>
 </head>
 <body>
@@ -20,18 +22,18 @@
     <div class="header-right">
       <button id="currency-btn" class="header-btn">TWD</button>
       <button id="theme-toggle-btn" aria-label="切換主題">🌙</button>
-      <span id="version-badge">V2.4</span>
+      <span id="version-badge">V2.5</span>
     </div>
   </header>
   <main id="main-content">
     <div class="empty-state" style="margin-top:80px;"><div class="icon">⏳</div><p>載入中…</p></div>
   </main>
   <nav id="bottom-nav">
-    <button class="nav-btn active" data-view="home"><span class="icon">🗂</span><span>帳本</span></button>
-    <button class="nav-btn" data-view="search"><span class="icon">🔍</span><span>搜尋</span></button>
+    <button class="nav-btn active" data-view="home"><span class="nav-icon">🗂️</span><span class="nav-label">帳本</span></button>
+    <button class="nav-btn" data-view="search"><span class="nav-icon">🔍</span><span class="nav-label">搜尋</span></button>
     <div class="nav-fab" id="nav-add-btn"><div class="nav-fab-circle">＋</div></div>
-    <button class="nav-btn" data-view="stats"><span class="icon">📊</span><span>統計</span></button>
-    <button class="nav-btn" data-view="settings"><span class="icon">⚙️</span><span>設定</span></button>
+    <button class="nav-btn" data-view="stats"><span class="nav-icon">📊</span><span class="nav-label">統計</span></button>
+    <button class="nav-btn" data-view="settings"><span class="nav-icon">⚙️</span><span class="nav-label">設定</span></button>
   </nav>
 </div>
 <div id="modal-overlay" class="hidden">

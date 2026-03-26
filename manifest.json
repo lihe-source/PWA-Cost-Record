@@ -4,8 +4,8 @@
   "description": "個人記帳 PWA，支援電子發票匯入與 Google Drive 雲端備份",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#f59e0b",
+  "background_color": "#181825",
+  "theme_color": "#181825",
   "orientation": "portrait",
   "icons": [
     {

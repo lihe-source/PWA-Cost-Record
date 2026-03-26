@@ -1,4 +1,7 @@
-// Cost Record Service Worker V2.3 - Auto Update Mechanism
+// Cost Record Service Worker V2.5
+// Strategy: Network-First for all app shell files
+// This ensures GitHub Pages updates are always picked up immediately
+
 importScripts('./version.js');
 
 const STATIC_ASSETS = [
@@ -12,75 +15,59 @@ const STATIC_ASSETS = [
   './icons/icon-512.png'
 ];
 
-// ── Install: cache all static assets ─────────────────────────────────────────
+// ── Install: pre-cache all assets, skip waiting immediately ──────────────────
 self.addEventListener('install', event => {
-  // Do NOT skipWaiting here — let the update banner trigger it
-  // so the user can choose when to reload
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_ASSETS))
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(STATIC_ASSETS))
+      .then(() => self.skipWaiting())   // activate new SW right away
   );
 });
 
-// ── Activate: delete old caches & immediately take control ───────────────────
+// ── Activate: purge all old caches, claim clients immediately ────────────────
 self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(
+    caches.keys()
+      .then(keys => Promise.all(
         keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))
-      )
-    ).then(() => self.clients.claim())
+      ))
+      .then(() => self.clients.claim())  // take over all open tabs now
   );
 });
 
-// ── Fetch: network-first for version.js so new versions are always detected ──
-//          stale-while-revalidate for other app shell files
+// ── Fetch: Network-First for all same-origin requests ────────────────────────
+// Falls back to cache only when fully offline
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
+  // Only handle GET requests to our own origin
   if (event.request.method !== 'GET') return;
   if (url.origin !== self.location.origin) return;
 
-  const pathname = url.pathname;
-
-  // version.js: always network-first — must bypass cache to detect new deployments
-  if (pathname.endsWith('version.js')) {
-    event.respondWith(
-      fetch(event.request, { cache: 'no-store' })
-        .then(response => {
-          if (response.ok) {
-            caches.open(CACHE_NAME).then(cache => cache.put(event.request, response.clone()));
+  event.respondWith(
+    fetch(event.request, { cache: 'no-store' })
+      .then(response => {
+        // Cache the fresh response for offline fallback
+        if (response.ok) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+        }
+        return response;
+      })
+      .catch(() => {
+        // Offline: serve from cache
+        return caches.match(event.request).then(cached => {
+          if (cached) return cached;
+          // Last resort for navigation requests
+          if (event.request.mode === 'navigate') {
+            return caches.match('./index.html');
           }
-          return response;
-        })
-        .catch(() => caches.match(event.request))
-    );
-    return;
-  }
-
-  // App shell: stale-while-revalidate
-  const isAppShell = STATIC_ASSETS.some(a => {
-    const clean = a.replace('./', '/');
-    return pathname === clean || pathname.endsWith(clean);
-  });
-
-  if (isAppShell) {
-    event.respondWith(
-      caches.open(CACHE_NAME).then(cache =>
-        cache.match(event.request).then(cached => {
-          const networkFetch = fetch(event.request).then(response => {
-            if (response.ok) cache.put(event.request, response.clone());
-            return response;
-          }).catch(() => null);
-          return cached || networkFetch;
-        })
-      )
-    );
-  }
+        });
+      })
+  );
 });
 
-// ── Message: SKIP_WAITING triggered by user tapping the update banner ─────────
+// ── Message: skip waiting on demand ──────────────────────────────────────────
 self.addEventListener('message', event => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
-  }
+  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
 });
