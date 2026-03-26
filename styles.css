@@ -1,4 +1,4 @@
-/* Cost Record PWA — styles.css V2.6 */
+/* Cost Record PWA — styles.css V3.2 */
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=DM+Mono:wght@400;500&display=swap');
 :root{
   --bg:#181825;--bg2:#1e1e2e;--bg3:#252538;--bg4:#2e2e45;
@@ -10,7 +10,7 @@
   --blue:#60a5fa;--blue-dim:rgba(96,165,250,0.13);
   --text:#eeeef8;--text2:#8080a0;--text3:#50506a;
   --radius:14px;--radius-sm:9px;--radius-xs:6px;
-  --nav-h:62px;--header-h:46px;
+  --nav-h:84px;--header-h:50px;
   --font-main:'Noto Sans TC',sans-serif;--font-mono:'DM Mono',monospace;
 }
 body.light-mode{
@@ -23,13 +23,43 @@ body.light-mode{
   --text:#1a1a2e;--text2:#555570;--text3:#8888aa;
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
-html,body{height:100%;overflow:hidden;-webkit-text-size-adjust:100%;overscroll-behavior:none}
-body{font-family:var(--font-main);background:var(--bg);color:var(--text);font-size:14px;-webkit-font-smoothing:antialiased;overscroll-behavior:none}
+/* ── Shell Foundation ── */
+html{height:100%}
+/* body:fixed is the ONLY reliable full-screen method on iOS PWA standalone */
+body{
+  position:fixed;
+  top:0;left:0;
+  width:100%;height:100%;
+  overflow:hidden;
+  margin:0;padding:0;
+  font-family:var(--font-main);
+  background:var(--bg);
+  color:var(--text);
+  font-size:14px;
+  -webkit-font-smoothing:antialiased;
+  overscroll-behavior:none;
+  -webkit-text-size-adjust:100%;
+}
 input,select,textarea{font-size:16px!important;-webkit-text-size-adjust:100%}
 
-/* App Shell */
-/* #app: position:fixed inset:0 is the only reliable full-screen method on iOS PWA */
-#app{position:fixed;inset:0;display:flex;flex-direction:column;max-width:430px;left:max(0px,calc(50% - 215px));right:max(0px,calc(50% - 215px));background:var(--bg);padding-top:env(safe-area-inset-top,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px);box-sizing:border-box;overflow:hidden;z-index:0;}
+/* ── App Shell ── */
+/* body:fixed + #app:100% = no height calculation, always fills screen exactly */
+#app{
+  width:100%;
+  height:100%;
+  max-width:430px;
+  margin:0 auto;
+  display:flex;
+  flex-direction:column;
+  background:var(--bg);
+  box-sizing:border-box;
+  overflow:hidden;
+  /* Safe area: push content below status bar */
+  padding-top:env(safe-area-inset-top,0px);
+  padding-left:env(safe-area-inset-left,0px);
+  padding-right:env(safe-area-inset-right,0px);
+  /* NO padding-bottom — #bottom-nav handles home indicator */
+}
 
 /* Header */
 #app-header{height:var(--header-h);display:flex;align-items:center;justify-content:space-between;
@@ -52,50 +82,48 @@ input,select,textarea{font-size:16px!important;-webkit-text-size-adjust:100%}
 .home-bottom::-webkit-scrollbar{width:2px}
 .home-bottom::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:1px}
 
-/* Bottom Nav — iOS PWA fix V2.5 */
+/* ── Bottom Nav ── */
+/* height = button area + home indicator padding */
 #bottom-nav{
-  height:calc(var(--nav-h) + env(safe-area-inset-bottom,0px));
-  min-height:calc(var(--nav-h) + env(safe-area-inset-bottom,0px));
-  padding-bottom:env(safe-area-inset-bottom,0px);
-  display:flex;align-items:flex-start;
+  flex-shrink:0;
+  display:flex;
+  align-items:flex-start;
+  flex-wrap:nowrap;
   background:var(--bg2);
   border-top:1px solid var(--border);
-  flex-shrink:0;
+  padding-top:4px;
+  /* Push buttons above home indicator; background fills to screen edge */
+  padding-bottom:env(safe-area-inset-bottom,0px);
   z-index:10;
 }
-/* Extend nav bg into safe area on iOS */
-#bottom-nav::after{
-  content:'';
-  position:absolute;
-  left:0;right:0;bottom:calc(-1 * env(safe-area-inset-bottom, 0px));
-  height:env(safe-area-inset-bottom, 0px);
-  background:var(--bg2);
-  pointer-events:none;
-}
 .nav-btn{
-  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  flex:0 0 20%;       /* exact 1/5 width */
+  width:20%;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;
   background:none;border:none;cursor:pointer;color:var(--text3);
-  font-size:11px;font-family:var(--font-main);font-weight:500;letter-spacing:.01em;
-  transition:color .2s;padding:6px 0 3px;position:relative;min-width:44px;
+  font-size:12px;font-family:var(--font-main);font-weight:600;letter-spacing:.01em;
+  transition:color .2s;padding:10px 0 5px;position:relative;min-width:44px;
 }
-.nav-btn .icon{font-size:26px;line-height:1}
-.nav-btn span:last-child{font-size:11px;line-height:1;font-weight:500}
+.nav-btn .icon{font-size:36px;line-height:1}
+.nav-btn span:last-child{font-size:13px;line-height:1;font-weight:600}
 .nav-btn.active{color:var(--amber)}
 .nav-btn.active .nav-icon-wrap{background:var(--amber-dim);border-radius:16px;padding:2px 10px}
-.nav-icon-wrap{display:flex;align-items:center;justify-content:center;padding:2px 10px;border-radius:16px;transition:background .2s}
+.nav-icon-wrap{display:flex;align-items:center;justify-content:center;padding:3px 12px;border-radius:18px;transition:background .2s}
 /* FAB — large centered add button floating above nav */
 .nav-fab{
-  flex:1.1;display:flex;align-items:center;justify-content:center;
+  flex:0 0 20%;       /* exact 1/5 width */
+  width:20%;
+  display:flex;align-items:center;justify-content:center;
   cursor:pointer;padding:0;border:none;background:none;
 }
 .nav-fab-circle{
-  width:52px;height:52px;border-radius:50%;
+  width:64px;height:64px;border-radius:50%;
   background:linear-gradient(145deg,var(--amber-light),var(--amber));
   display:flex;align-items:center;justify-content:center;
-  font-size:28px;font-weight:300;color:var(--bg);
-  box-shadow:0 4px 20px var(--amber-glow),0 1px 4px rgba(0,0,0,.3);
+  font-size:34px;font-weight:300;color:var(--bg);
+  box-shadow:0 4px 28px var(--amber-glow),0 2px 8px rgba(0,0,0,.4);
   transition:transform .18s,box-shadow .18s;
-  margin-top:-20px;
+  margin-top:-26px;
 }
 .nav-fab:active .nav-fab-circle{transform:scale(.91);box-shadow:0 2px 10px var(--amber-glow)}
 
@@ -181,7 +209,7 @@ input,select,textarea{font-size:16px!important;-webkit-text-size-adjust:100%}
 #modal-overlay:not(.hidden){pointer-events:all}
 #modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);z-index:100;opacity:0;transition:opacity .25s;pointer-events:none}
 #modal-backdrop.visible{opacity:1;pointer-events:all}
-#modal-content{position:fixed;inset:0;max-width:430px;margin:0 auto;background:var(--bg);z-index:101;display:flex;flex-direction:column;transform:translateX(105%);transition:transform .28s cubic-bezier(.4,0,.2,1);padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+#modal-content{position:fixed;inset:0;max-width:430px;margin:0 auto;background:var(--bg);z-index:101;display:flex;flex-direction:column;transform:translateX(105%);transition:transform .28s cubic-bezier(.4,0,.2,1);padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);max-height:100dvh;overflow:hidden}
 #modal-content.slide-in{transform:translateX(0)}
 #modal-content.sheet-mode{inset:auto 0 0 0;border-radius:var(--radius) var(--radius) 0 0;max-height:88dvh;transform:translateY(105%);transition:transform .28s cubic-bezier(.4,0,.2,1);padding-top:0;padding-bottom:env(safe-area-inset-bottom,0px)}
 #modal-content.sheet-mode.slide-in{transform:translateY(0)}
@@ -189,13 +217,13 @@ input,select,textarea{font-size:16px!important;-webkit-text-size-adjust:100%}
 .modal-handle{width:34px;height:3px;background:var(--bg4);border-radius:2px;margin:9px auto 0;flex-shrink:0}
 .modal-topbar{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);flex-shrink:0}
 .modal-topbar-title{font-size:15px;font-weight:700;text-align:center;flex:1}
-.modal-topbar-btn{width:44px;height:44px;border-radius:50%;background:var(--bg3);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text2);font-size:18px;transition:all .2s;flex-shrink:0;min-width:44px}
+.modal-topbar-btn{width:52px;height:52px;border-radius:50%;background:var(--bg3);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text2);font-size:21px;transition:all .2s;flex-shrink:0;min-width:50px}
 .modal-topbar-btn:hover{background:var(--bg4);color:var(--text)}
-.modal-topbar-btn.confirm{background:var(--amber-dim);color:var(--amber);font-size:22px}
+.modal-topbar-btn.confirm{background:var(--amber-dim);color:var(--amber);font-size:26px}
 .modal-topbar-btn.confirm:hover{background:var(--amber);color:var(--bg)}
 .modal-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);flex-shrink:0}
 .modal-title{font-size:15px;font-weight:700}
-.modal-close{background:var(--bg3);border:none;border-radius:8px;color:var(--text2);cursor:pointer;font-size:16px;width:38px;height:38px;display:flex;align-items:center;justify-content:center;transition:color .2s}
+.modal-close{background:var(--bg3);border:none;border-radius:10px;color:var(--text2);cursor:pointer;font-size:18px;width:44px;height:44px;display:flex;align-items:center;justify-content:center;transition:color .2s}
 .modal-close:hover{color:var(--text)}
 .modal-body{flex:1;overflow-y:auto;padding:12px 14px 0;display:flex;flex-direction:column;gap:10px;min-height:0;overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch}
 .modal-body::-webkit-scrollbar{width:2px}
@@ -253,7 +281,7 @@ input,select,textarea{font-size:16px!important;-webkit-text-size-adjust:100%}
 .inv-item-current-badge{font-size:9px;color:var(--amber);background:var(--amber-dim);border-radius:7px;padding:1px 6px;flex-shrink:0}
 
 /* Settings */
-.settings-wrap{padding:10px 10px calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 10px);display:flex;flex-direction:column;gap:8px}
+.settings-wrap{padding:10px 10px calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 12px);display:flex;flex-direction:column;gap:8px}
 .settings-group-label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;padding:4px 4px 2px;font-weight:600}
 .settings-card{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:13px 14px;cursor:pointer;transition:background .18s,border-color .18s}
 .settings-card:hover{background:var(--card2);border-color:var(--border2)}
@@ -373,7 +401,7 @@ input,select,textarea{font-size:16px!important;-webkit-text-size-adjust:100%}
 .stats-sub-cat-pct{font-size:9px;color:var(--text3);font-family:var(--font-mono)}
 
 /* Search */
-.search-wrap{padding:10px 10px calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 10px);display:flex;flex-direction:column;gap:8px}
+.search-wrap{padding:10px 10px calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 12px);display:flex;flex-direction:column;gap:8px}
 .search-box{position:relative;display:flex;align-items:center}
 .search-icon{position:absolute;left:11px;color:var(--text3);font-size:14px;pointer-events:none;z-index:1}
 .search-box input{width:100%;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--font-main);padding:10px 36px 10px 36px;outline:none;transition:border-color .2s;-webkit-appearance:none}
@@ -485,8 +513,6 @@ input,select,textarea{font-size:16px!important;-webkit-text-size-adjust:100%}
 .drive-version-info{font-size:11px;color:var(--text3);margin-top:2px}
 @media(min-width:430px){#app{border-left:1px solid var(--border);border-right:1px solid var(--border);box-shadow:0 0 60px rgba(0,0,0,.8)}}
 
-/* PWA standalone: handled by position:fixed inset:0 on #app */
-
 /* Google Drive login card */
 .drive-login-card{border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--border)}
 .drive-login-status{display:flex;align-items:center;gap:10px;padding:12px 14px}
@@ -505,15 +531,72 @@ input,select,textarea{font-size:16px!important;-webkit-text-size-adjust:100%}
 .modal-body.expense-form .edit-notes-area{flex:1;min-height:120px;display:flex;flex-direction:column}
 .modal-body.expense-form .edit-notes-input{flex:1;min-height:100px;max-height:none;overflow-y:auto}
 /* Nav icon/label compat */
-.nav-icon{font-size:22px;line-height:1}
+.nav-icon{font-size:30px;line-height:1}
 .nav-label{font-size:10px;line-height:1}
 
 
+/* ═══════════════════════════════════════════════════════════════
+   PWA STANDALONE — full-screen optimized layout
+   Only applies when installed as PWA (add to home screen)
+   ═══════════════════════════════════════════════════════════════ */
+@media all and (display-mode: standalone) {
+
+  /* Body fills exact screen — no scrollbar, no bounce */
+  body {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  /* App fills body exactly */
+  #app {
+    width: 100%;
+    height: 100%;
+    position: static;   /* let body:fixed do the work */
+    inset: unset;
+  }
+
+  /* Bottom nav — sits flush at screen bottom */
+  /* padding-bottom pushes buttons above home indicator */
+  /* The nav background fills the entire home indicator zone */
+  #bottom-nav {
+    /* No fixed height calc — auto size from buttons + safe-area */
+    height: auto;
+    min-height: unset;
+    padding-top: 6px;
+    padding-bottom: max(env(safe-area-inset-bottom, 16px), 16px);
+  }
+
+  /* Each nav item: larger touch target in standalone */
+  .nav-btn {
+    padding: 6px 0 0;
+  }
+
+  /* FAB floats higher to clear the taller nav bar */
+  .nav-fab-circle {
+    margin-top: -28px;
+  }
+}
+
 /* Category drag-to-reorder */
-.cat2-section{border-bottom:1px solid var(--border);touch-action:none}
-.cat2-section.dragging{opacity:.55;background:var(--bg3)}
+.cat2-section{touch-action:none}
+.cat2-section.dragging{opacity:.5;background:var(--bg3)}
 .cat2-section.drag-over{border-top:2px solid var(--amber)}
-.cat-drag-handle{cursor:grab;font-size:18px;color:var(--text3);padding:0 6px;flex-shrink:0;touch-action:none;user-select:none}
-.cat-drag-handle:active{cursor:grabbing}
-.cat2-sub-item{position:relative}
-.sub-drag-handle{cursor:grab;font-size:14px;color:var(--text3);padding:0 5px;flex-shrink:0;touch-action:none;user-select:none}
+.cat-drag-handle{cursor:grab;font-size:20px;color:var(--text3);padding:0 8px;flex-shrink:0;touch-action:none;user-select:none;-webkit-user-select:none}
+.cat-drag-handle:active{cursor:grabbing;color:var(--amber)}
+.sub-drag-handle{cursor:grab;font-size:15px;color:var(--text3);padding:0 6px;flex-shrink:0;touch-action:none;user-select:none;-webkit-user-select:none}
+
+
+/* Category drag-to-reorder handles */
+.cat-drag-handle{cursor:grab;font-size:20px;color:var(--text3);padding:0 8px;flex-shrink:0;touch-action:none;user-select:none;display:flex;align-items:center}
+.cat-drag-handle:active{cursor:grabbing;color:var(--amber)}
+.cat2-section.dragging{opacity:.5;background:var(--bg3)}
+.cat2-section.drag-over{border-top:2px solid var(--amber)}
+.sub-drag-handle{cursor:grab;font-size:15px;color:var(--text3);padding:0 6px;flex-shrink:0;touch-action:none;user-select:none}
+.sub-drag-handle:active{cursor:grabbing}
+
+/* Category management page — list must scroll within modal-body */
+#cat-list{display:flex;flex-direction:column;gap:0;overflow-y:auto;flex:1}
+.cat2-section{border-bottom:1px solid var(--border)}

@@ -1,3 +1,3 @@
-const APP_VERSION = 'V2.6';
-const APP_BUILD   = '2_6';
-const CACHE_NAME  = 'cost-record-V2_6';
+const APP_VERSION = 'V3.2';
+const APP_BUILD   = '3_2';
+const CACHE_NAME  = 'cost-record-V3_2';
