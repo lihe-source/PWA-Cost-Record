@@ -7,22 +7,12 @@ const STATIC_ASSETS = [
   './styles.css',
   './app.js',
   './version.js',
-  './version.json',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png'
 ];
 
-function isSameOrigin(requestUrl) {
-  return new URL(requestUrl).origin === self.location.origin;
-}
-
-function shouldUseNetworkFirst(pathname) {
-  return pathname.endsWith('/version.json')
-    || pathname.endsWith('/version.js')
-    || pathname.endsWith('/service-worker.js');
-}
-
+// ── Install: cache all static assets ─────────────────────────────────────────
 self.addEventListener('install', event => {
   self.skipWaiting();
   event.waitUntil(
@@ -30,48 +20,48 @@ self.addEventListener('install', event => {
   );
 });
 
+// ── Activate: delete old caches ───────────────────────────────────────────────
 self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))))
-      .then(() => self.clients.claim())
+    caches.keys().then(keys =>
+      Promise.all(
+        keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))
+      )
+    ).then(() => self.clients.claim())
   );
 });
 
+// ── Fetch: stale-while-revalidate for HTML/JS/CSS, cache-first for others ────
 self.addEventListener('fetch', event => {
-  const request = event.request;
-  if (request.method !== 'GET') return;
+  const url = new URL(event.request.url);
 
-  const url = new URL(request.url);
-  if (!isSameOrigin(request.url)) return;
+  // Skip non-GET and external requests
+  if (event.request.method !== 'GET') return;
+  if (!url.origin.includes(self.location.origin) &&
+      !url.pathname.endsWith('.json') &&
+      !url.pathname.endsWith('.js') &&
+      !url.pathname.endsWith('.css') &&
+      !url.pathname.endsWith('.html')) return;
 
-  if (shouldUseNetworkFirst(url.pathname)) {
+  const isAppShell = STATIC_ASSETS.some(a => url.pathname.endsWith(a.replace('./', '/')));
+
+  if (isAppShell) {
+    // Stale-while-revalidate
     event.respondWith(
-      fetch(request, { cache: 'no-store' })
-        .then(response => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(request, copy));
-          return response;
+      caches.open(CACHE_NAME).then(cache =>
+        cache.match(event.request).then(cached => {
+          const networkFetch = fetch(event.request).then(response => {
+            cache.put(event.request, response.clone());
+            return response;
+          });
+          return cached || networkFetch;
         })
-        .catch(() => caches.match(request))
+      )
     );
-    return;
   }
-
-  event.respondWith(
-    caches.match(request).then(cached => {
-      const networkFetch = fetch(request).then(response => {
-        if (response && response.ok) {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(request, copy));
-        }
-        return response;
-      });
-      return cached || networkFetch;
-    })
-  );
 });
 
+// ── Message: force update ─────────────────────────────────────────────────────
 self.addEventListener('message', event => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();

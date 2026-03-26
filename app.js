@@ -1,650 +1,388 @@
 /* ─────────────────────────────────────────────────────────────
-   Cost Record PWA — app.js  V1.0
-   Modules: DataStore · InvoiceService · DriveService · App
+   Cost Record PWA — app.js  V2.0
+   Modules: DataStore · DriveService · CurrencyService · App
 ───────────────────────────────────────────────────────────── */
 'use strict';
 
 // ══════════════════════════════════════════════════════════════
 // CONSTANTS
 // ══════════════════════════════════════════════════════════════
-const STORAGE_KEY   = 'cost_record_v2';
-const DRIVE_PREFIX  = 'cost-record-backup';
-const DRIVE_FOLDER_NAME = '#PWA-Cost-Record';
+const STORAGE_KEY   = 'cost_record_v1';
+const DRIVE_FOLDER  = '#PWA-Cost-Record';
+
+const CURRENCIES = {
+  TWD: { symbol: '$', name: '台幣', flag: '🇹🇼' },
+  JPY: { symbol: '¥', name: '日幣', flag: '🇯🇵' },
+  CNY: { symbol: '¥', name: '人民幣', flag: '🇨🇳' },
+  EUR: { symbol: '€', name: '歐元', flag: '🇪🇺' },
+  USD: { symbol: '$', name: '美金', flag: '🇺🇸' }
+};
 
 const DEFAULT_CATEGORIES = [
-  {
-    name: '平日消費',
-    icon: '🍽️',
-    subs: [
-      { name: '早餐', icon: '🍳' },
-      { name: '午餐', icon: '🍱' },
-      { name: '晚餐', icon: '🍜' },
-      { name: '點心', icon: '🧁' },
-      { name: '飲料', icon: '🧋' }
-    ]
-  },
-  {
-    name: '家庭消費',
-    icon: '🏠',
-    subs: [
-      { name: '市場', icon: '🛒' },
-      { name: '家電', icon: '📺' },
-      { name: '出遊', icon: '🚗' }
-    ]
-  }
+  { name:'飲食',  icon:'🍽️', subs:['早餐','午餐','晚餐','點心','飲料','宵夜','水果','酒類'] },
+  { name:'交通',  icon:'🚗', subs:['加油費','停車費','摩托車','汽車','火車','計程車','單車'] },
+  { name:'購物',  icon:'🛍️', subs:['市場','衣物','鞋子','電子產品','美妝保養','禮物','配件'] },
+  { name:'家居',  icon:'🏠', subs:['家具','家電','日常用品','電費','水費','網路費','管理費'] },
+  { name:'娛樂',  icon:'🎮', subs:['影音','電影','運動','遊戲','展覽','遊樂園'] },
+  { name:'學習',  icon:'📚', subs:['書籍','課程','教材','文具','證書'] },
+  { name:'醫療',  icon:'🏥', subs:['門診','藥品','保健食品','牙齒保健','健康檢查'] },
+  { name:'個人',  icon:'👤', subs:['保險','稅金','理髮','捐款','通話費'] },
+  { name:'家庭',  icon:'👨‍👩‍👧‍👦', subs:['才藝','玩具','禮金','結婚'] },
+  { name:'生活',  icon:'🌟', subs:['旅行','住宿','按摩','派對','美容美髮'] },
+  { name:'其他',  icon:'💰', subs:['其他'] }
 ];
 
+// Full icon map for categories
 const CAT_ICONS = {
-  '平日消費': '🍽️', '家庭消費': '🏠',
-  '早餐': '🍳', '午餐': '🍱', '晚餐': '🍜', '點心': '🧁', '飲料': '🧋',
-  '市場': '🛒', '家電': '📺', '出遊': '🚗',
-  '待分類': '📋', '其他': '💰', '未分類': '📁'
+  // 大分類
+  '飲食':'🍽️','交通':'🚗','購物':'🛍️','家居':'🏠','娛樂':'🎮',
+  '學習':'📚','醫療':'🏥','個人':'👤','家庭':'👨‍👩‍👧‍👦','生活':'🌟',
+  '平日消費':'📅','家庭消費':'🏡',
+  // 飲食
+  '早餐':'🍳','午餐':'🍱','晚餐':'🍜','點心':'🧁','飲料':'🧋',
+  '宵夜':'🌙','水果':'🍎','酒類':'🍺',
+  // 交通
+  '加油費':'⛽','停車費':'🅿️','摩托車':'🏍️','汽車':'🚗',
+  '火車':'🚆','計程車':'🚕','單車':'🚲',
+  // 購物
+  '市場':'🛒','衣物':'👗','鞋子':'👟','電子產品':'💻',
+  '美妝保養':'💄','禮物':'🎁','配件':'⌚',
+  // 家居
+  '家具':'🛋️','家電':'📺','日常用品':'🧴','電費':'⚡',
+  '水費':'💧','網路費':'📶','管理費':'🏢','燃料費':'🔥',
+  '新屋支出':'🏗️','裝飾':'🪴','電話費':'📱','洗衣費':'👕',
+  // 娛樂
+  '影音':'🎬','電影':'🎥','運動':'⚽','遊戲':'🎮',
+  '展覽':'🖼️','遊樂園':'🎡','消遣':'🎯','博弈':'🎰',
+  // 學習
+  '書籍':'📖','課程':'📝','教材':'📓','文具':'✏️','證書':'🎓',
+  // 個人
+  '保險':'🛡️','稅金':'📋','理髮':'💇','捐款':'❤️',
+  '通話費':'📞','社交':'👥',
+  // 家庭
+  '才藝':'🎨','玩具':'🧸','禮金':'🧧','結婚':'💒',
+  // 生活
+  '旅行':'✈️','住宿':'🏨','按摩':'💆','派對':'🎉',
+  '美容美髮':'💅','蜜月旅行':'💑',
+  '出遊- 東京行':'🗼','出遊- 泰國行':'🏖️',
+  // 醫療
+  '門診':'🏥','藥品':'💊','保健食品':'🌿','牙齒保健':'🦷',
+  '健康檢查':'🩺','醫療用品':'🩹',
+  '待分類':'📋','其他':'💰'
 };
 
-const ICON_OPTIONS = [
-  '📁','🏷️','🍽️','🍳','🍱','🍜','🧁','🧋','☕','🍔','🍕','🍣',
-  '🏠','🛒','📺','🚗','🎮','🎬','📚','💼','💳','💰','🏥','💊',
-  '✈️','🚆','⛽','🧺','🐶','🎁','👕','🏃','🎵','🧾','📋','🧩'
+// Available icons for icon picker
+const ICON_PICKER_LIST = [
+  '🍽️','🍳','🍱','🍜','🧁','🧋','🍺','🍎','🌙','🍔','🍕','🍣','☕',
+  '🚗','🚕','🚆','✈️','🏍️','🚲','⛽','🅿️','🚢','🚌',
+  '🛍️','🛒','👗','👟','💻','💄','🎁','⌚','👜','👒',
+  '🏠','🛋️','📺','🧴','⚡','💧','📶','🔥','🏗️','🪴',
+  '🎮','🎬','🎥','⚽','🎳','🎡','🎯','🎰','🎪','🏊',
+  '📚','📖','📝','📓','✏️','🎓','🔬','🖥️',
+  '🏥','💊','🌿','🦷','🩺','🩹','💉',
+  '👤','🛡️','📋','💇','❤️','📞','👥',
+  '👨‍👩‍👧‍👦','🎨','🧸','🧧','💒',
+  '🌟','💰','🏦','💳','📊','🎉','🌈','⭐','🔑','🎵'
 ];
 
-const CURRENCY_OPTIONS = [
-  { code: 'TWD', label: '台幣', symbol: 'NT$' },
-  { code: 'JPY', label: '日幣', symbol: '¥' },
-  { code: 'CNY', label: '人民幣', symbol: 'CN¥' },
-  { code: 'EUR', label: '歐元', symbol: '€' },
-  { code: 'USD', label: '美金', symbol: 'US$' }
-];
-
-const GEMINI_MODELS = [
-  'gemini-1.5-flash',
-  'gemini-1.5-pro',
-  'gemini-2.0-flash',
-  'gemini-2.0-pro'
-];
-
-function fallbackSubIcon(name) {
-  return CAT_ICONS[name] || '🧩';
-}
-
-function fallbackCatIcon(name, subs = []) {
-  return CAT_ICONS[name] || subs[0]?.icon || '📁';
-}
-
-function normalizeSubCategory(sub) {
-  if (typeof sub === 'string') {
-    return { name: sub, icon: fallbackSubIcon(sub) };
-  }
-  return {
-    name: (sub?.name || '').trim() || '未命名小分類',
-    icon: sub?.icon || fallbackSubIcon(sub?.name)
-  };
-}
-
-function normalizeCategory(cat) {
-  if (typeof cat === 'string') {
-    return { name: cat, icon: fallbackCatIcon(cat), subs: [] };
-  }
-  const subs = Array.isArray(cat?.subs) ? cat.subs.map(normalizeSubCategory) : [];
-  return {
-    name: (cat?.name || '').trim() || '未命名分類',
-    icon: cat?.icon || fallbackCatIcon(cat?.name, subs),
-    subs
-  };
-}
-
-function syncCategoryIconMap(categories = []) {
-  categories.forEach(cat => {
-    if (cat?.name) CAT_ICONS[cat.name] = cat.icon || fallbackCatIcon(cat.name, cat.subs);
-    (cat?.subs || []).forEach(sub => {
-      if (sub?.name) CAT_ICONS[sub.name] = sub.icon || fallbackSubIcon(sub.name);
-    });
-  });
-}
-
-function normalizeExpenseRecord(exp = {}) {
-  const amount = Number(exp.amount || 0);
-  const currency = exp.currency || 'TWD';
-  const amountTwd = exp.amountTwd != null
-    ? Number(exp.amountTwd)
-    : (currency === 'TWD' ? amount : amount);
-  return { ...exp, amount, currency, amountTwd };
-}
-
-const VERSION_META = window.APP_VERSION_INFO || {
-  version: typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'V1_2',
-  build: typeof APP_BUILD !== 'undefined' ? APP_BUILD : '1_2',
-  cacheName: typeof CACHE_NAME !== 'undefined' ? CACHE_NAME : 'cost-record-v1_2',
-  githubVersionUrl: './version.json',
-  versionCheckIntervalMs: 5 * 60 * 1000
-};
+const GEMINI_MODELS = ['gemini-1.5-flash','gemini-1.5-pro','gemini-2.0-flash','gemini-2.0-pro'];
 
 // ══════════════════════════════════════════════════════════════
 // DATA STORE
 // ══════════════════════════════════════════════════════════════
 class DataStore {
-  constructor() {
-    this.data = this._load();
-  }
+  constructor() { this.data = this._load(); }
 
   _load() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('cost_record_v1');
+      const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
-        return this._normalizeData(JSON.parse(raw));
+        const d = JSON.parse(raw);
+        // Migrate: ensure categories have icon field
+        if (d.categories) {
+          d.categories = d.categories.map(c => ({
+            icon: CAT_ICONS[c.name] || '📁',
+            ...c,
+            subs: (c.subs||[]).map(s => typeof s === 'string' ? {name:s, icon:CAT_ICONS[s]||'📁'} : s)
+          }));
+        }
+        // Migrate: ensure settings has currency
+        if (!d.settings) d.settings = {};
+        if (!d.settings.defaultCurrency) d.settings.defaultCurrency = 'TWD';
+        if (!d.storeMapping) d.storeMapping = [];
+        return d;
       }
-    } catch (e) { console.error('Load error', e); }
+    } catch(e) { console.error('Load error', e); }
     return this._default();
   }
 
   _default() {
-    const data = {
+    return {
       schemaVersion: 2,
       expenses: [],
-      categories: JSON.parse(JSON.stringify(DEFAULT_CATEGORIES)),
+      categories: DEFAULT_CATEGORIES.map(c => ({
+        ...c,
+        subs: c.subs.map(s => ({ name: s, icon: CAT_ICONS[s]||'📁' }))
+      })),
       settings: {
-        geminiApiKey: '',
-        geminiModel: 'gemini-1.5-flash',
-        googleClientId: ''
+        geminiApiKey: '', geminiModel: 'gemini-1.5-flash',
+        googleClientId: '', defaultCurrency: 'TWD'
       },
-      importedInvoiceNos: [],
-      lastSync: null,
-      storeMapping: []
+      importedInvoiceNos: [], lastSync: null, storeMapping: []
     };
-    syncCategoryIconMap(data.categories);
-    return data;
-  }
-
-  _normalizeData(raw) {
-    const defaults = this._default();
-    const data = { ...defaults, ...(raw || {}) };
-    data.categories = (Array.isArray(raw?.categories) && raw.categories.length
-      ? raw.categories
-      : defaults.categories
-    ).map(normalizeCategory);
-    data.expenses = Array.isArray(raw?.expenses) ? raw.expenses.map(normalizeExpenseRecord) : [];
-    data.settings = {
-      ...defaults.settings,
-      ...(raw?.settings || {})
-    };
-    delete data.settings.invoiceCardNo;
-    delete data.settings.invoiceCardEncrypt;
-    delete data.settings.invoiceAppId;
-    delete data.settings.invoiceApiKey;
-    data.importedInvoiceNos = Array.isArray(raw?.importedInvoiceNos) ? raw.importedInvoiceNos : [];
-    data.storeMapping = Array.isArray(raw?.storeMapping) ? raw.storeMapping : [];
-    data.schemaVersion = 2;
-    syncCategoryIconMap(data.categories);
-    return data;
   }
 
   save() {
-    try {
-      syncCategoryIconMap(this.data.categories);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data));
-    } catch (e) { console.error('Save error', e); }
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data)); }
+    catch(e) { console.error('Save error', e); }
   }
 
-  // ── Expense CRUD ──────────────────────────────────────────
   addExpense(exp) {
-    exp = normalizeExpenseRecord(exp);
-    exp.id        = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    exp.id = `${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
     exp.createdAt = new Date().toISOString();
-    this.data.expenses.push(exp);
-    this.save();
-    return exp;
+    this.data.expenses.push(exp); this.save(); return exp;
   }
-
   updateExpense(id, updates) {
-    const idx = this.data.expenses.findIndex(e => e.id === id);
-    if (idx < 0) return null;
-    this.data.expenses[idx] = normalizeExpenseRecord({
-      ...this.data.expenses[idx],
-      ...updates,
-      updatedAt: new Date().toISOString()
-    });
-    this.save();
-    return this.data.expenses[idx];
+    const idx = this.data.expenses.findIndex(e=>e.id===id);
+    if(idx<0) return null;
+    this.data.expenses[idx] = {...this.data.expenses[idx], ...updates, updatedAt: new Date().toISOString()};
+    this.save(); return this.data.expenses[idx];
   }
-
-  deleteExpense(id) {
-    this.data.expenses = this.data.expenses.filter(e => e.id !== id);
-    this.save();
-  }
-
-  getByDate(dateStr) {
-    return this.data.expenses
-      .filter(e => e.date === dateStr)
-      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-  }
-
+  deleteExpense(id) { this.data.expenses = this.data.expenses.filter(e=>e.id!==id); this.save(); }
+  getByDate(dateStr) { return this.data.expenses.filter(e=>e.date===dateStr).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')); }
   getByMonth(year, month) {
-    const prefix = `${year}-${String(month).padStart(2, '0')}`;
-    return this.data.expenses.filter(e => e.date && e.date.startsWith(prefix));
+    const prefix = `${year}-${String(month).padStart(2,'0')}`;
+    return this.data.expenses.filter(e=>e.date&&e.date.startsWith(prefix));
   }
-
   getDatesWithExpenses(year, month) {
     const set = new Set();
-    this.getByMonth(year, month).forEach(e => set.add(e.date));
-    return set;
+    this.getByMonth(year, month).forEach(e=>set.add(e.date)); return set;
   }
-
   search(kw) {
-    if (!kw || kw.trim() === '') return [...this.data.expenses];
+    if(!kw||!kw.trim()) return [...this.data.expenses];
     const q = kw.toLowerCase();
-    return this.data.expenses.filter(e =>
-      (e.description  || '').toLowerCase().includes(q) ||
-      (e.store        || '').toLowerCase().includes(q) ||
-      (e.category1    || '').toLowerCase().includes(q) ||
-      (e.category2    || '').toLowerCase().includes(q) ||
-      (e.invoiceNo    || '').toLowerCase().includes(q) ||
-      (e.currency     || '').toLowerCase().includes(q)
-    ).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    return this.data.expenses.filter(e=>
+      (e.description||'').toLowerCase().includes(q)||(e.store||'').toLowerCase().includes(q)||
+      (e.category1||'').toLowerCase().includes(q)||(e.category2||'').toLowerCase().includes(q)||
+      (e.invoiceNo||'').toLowerCase().includes(q)
+    ).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   }
-
-  getInvoiceItems(invoiceNo) {
-    if (!invoiceNo) return [];
-    return this.data.expenses.filter(e => e.invoiceNo === invoiceNo);
-  }
-
-  isInvoiceImported(invNo) {
-    return this.data.importedInvoiceNos.includes(invNo);
-  }
-
+  getInvoiceItems(invNo) { return this.data.expenses.filter(e=>e.invoiceNo===invNo); }
+  isInvoiceImported(invNo) { return this.data.importedInvoiceNos.includes(invNo); }
   markInvoiceImported(invNo) {
-    if (!this.data.importedInvoiceNos.includes(invNo)) {
-      this.data.importedInvoiceNos.push(invNo);
-      this.save();
+    if(!this.data.importedInvoiceNos.includes(invNo)){
+      this.data.importedInvoiceNos.push(invNo); this.save();
     }
   }
-
-  // ── Export / Import ──────────────────────────────────────
-  export() {
-    return JSON.parse(JSON.stringify(this.data));
-  }
-
+  export() { return JSON.parse(JSON.stringify(this.data)); }
   import(raw) {
-    if (!raw || typeof raw !== 'object') throw new Error('無效的備份格式');
-    this.data = this._normalizeData(raw);
+    if(!raw||typeof raw!=='object') throw new Error('無效的備份格式');
+    this.data = {...this._default(), ...raw};
     this.save();
   }
-}
-
-// ══════════════════════════════════════════════════════════════
-// INVOICE SERVICE — 財政部電子發票 API
-// ══════════════════════════════════════════════════════════════
-class InvoiceService {
-  constructor() { }
-
-  async _sign(message, key) {
-    const enc     = new TextEncoder();
-    const cryptoKey = await crypto.subtle.importKey(
-      'raw', enc.encode(key),
-      { name: 'HMAC', hash: 'SHA-256' },
-      false, ['sign']
-    );
-    const sig = await crypto.subtle.sign('HMAC', cryptoKey, enc.encode(message));
-    return btoa(String.fromCharCode(...new Uint8Array(sig)));
+  getCatSubName(catIdx, subIdx) {
+    const cat = this.data.categories[catIdx];
+    if(!cat) return '';
+    const sub = cat.subs[subIdx];
+    return typeof sub === 'string' ? sub : (sub?.name||'');
   }
-
-  // Query carrier invoice list
-  async fetchInvoices(settings, startDate, endDate) {
-    const { invoiceCardNo, invoiceCardEncrypt, invoiceAppId, invoiceApiKey } = settings;
-    if (!invoiceCardNo || !invoiceCardEncrypt || !invoiceAppId || !invoiceApiKey) {
-      throw new Error('請先至設定頁面填寫完整的電子發票 API 資訊');
-    }
-
-    const ts   = Math.floor(Date.now() / 1000).toString();
-    const uuid = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}`;
-
-    const qStr = [
-      `action=carrierInvChk`,
-      `appID=${invoiceAppId}`,
-      `cardEncrypt=${encodeURIComponent(invoiceCardEncrypt)}`,
-      `cardType=3J0002`,
-      `expTimeStamp=2147483647`,
-      `invStatus=all`,
-      `timeStamp=${ts}`,
-      `uuid=${uuid}`,
-      `version=0.5`
-    ].join('&');
-
-    const signature = await this._sign(qStr, invoiceApiKey);
-
-    const body = new URLSearchParams({
-      version:     '0.5',
-      cardType:    '3J0002',
-      cardNo:      invoiceCardNo,
-      expTimeStamp:'2147483647',
-      action:      'carrierInvChk',
-      timeStamp:   ts,
-      invStatus:   'all',
-      uuid,
-      appID:       invoiceAppId,
-      cardEncrypt: invoiceCardEncrypt,
-      signature
-    });
-    if (startDate) body.append('startDate', startDate);
-    if (endDate)   body.append('endDate',   endDate);
-
-    const res = await fetch(
-      'https://api.einvoice.nat.gov.tw/PB2CAPIVAN/invServ/InvServ',
-      { method: 'POST', body }
-    );
-    if (!res.ok) throw new Error(`API HTTP ${res.status}`);
-    const data = await res.json();
-    if (data.code && data.code !== 200) throw new Error(data.msg || `API 錯誤碼 ${data.code}`);
-    return data;
-  }
-
-  // Parse invoice date string like "20260322" → "2026-03-22"
-  parseInvoiceDate(ds) {
-    if (!ds || ds.length < 8) return null;
-    return `${ds.slice(0,4)}-${ds.slice(4,6)}-${ds.slice(6,8)}`;
+  getCatSubIcon(cat1Name, cat2Name) {
+    const cat = this.data.categories.find(c=>c.name===cat1Name);
+    if(!cat) return CAT_ICONS[cat2Name]||'📁';
+    const sub = cat.subs.find(s=>(typeof s==='string'?s:s.name)===cat2Name);
+    if(typeof sub==='string') return CAT_ICONS[sub]||'📁';
+    return sub?.icon || CAT_ICONS[cat2Name]||'📁';
   }
 }
 
 // ══════════════════════════════════════════════════════════════
-// CSV INVOICE PARSER — 財政部電子發票 CSV 格式
-// ══════════════════════════════════════════════════════════════
-class CsvInvoiceParser {
-
-  // Parse raw CSV text → array of row objects
-  parse(text) {
-    // Normalize line endings
-    const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
-
-    const HEADER_COLS = [
-      '載具自訂名稱','發票日期','發票號碼','發票金額','發票狀態',
-      '折讓','賣方統一編號','賣方名稱','賣方地址','買方統編',
-      '消費明細_數量','消費明細_單價','消費明細_金額','消費明細_品名'
-    ];
-
-    const rows = [];
-    let headerFound = false;
-    let colMap = {};
-
-    for (const rawLine of lines) {
-      const line = rawLine.trim();
-      if (!line) continue;
-
-      // Skip footer notes
-      if (line.startsWith('捐贈或作廢') || line.startsWith('注意')) continue;
-
-      const cols = this._splitCsv(line);
-
-      // Detect header row
-      if (!headerFound) {
-        if (cols.some(c => c.includes('發票日期') || c.includes('發票號碼'))) {
-          headerFound = true;
-          cols.forEach((c, i) => { colMap[c.trim()] = i; });
-          continue;
-        }
-        // Try positional fallback (no header row in file)
-        if (cols.length >= 14 && /^\d{8}$/.test(cols[1])) {
-          headerFound = true;
-          HEADER_COLS.forEach((h, i) => { colMap[h] = i; });
-        } else {
-          continue;
-        }
-      }
-
-      if (cols.length < 4) continue;
-
-      const get = key => (cols[colMap[key]] || '').trim();
-
-      const amount = parseFloat(get('消費明細_金額') || get('發票金額') || '0');
-      const rawDate = get('發票日期');
-
-      // Skip zero/negative item amounts (折扣行)
-      if (amount <= 0) continue;
-      // Skip invalid dates
-      if (!/^\d{8}$/.test(rawDate)) continue;
-
-      rows.push({
-        date:      `${rawDate.slice(0,4)}-${rawDate.slice(4,6)}-${rawDate.slice(6,8)}`,
-        invoiceNo: get('發票號碼'),
-        amount,
-        description: get('消費明細_品名') || get('賣方名稱') || '(未命名)',
-        store:     get('賣方名稱'),
-        status:    get('發票狀態'),
-        carrier:   get('載具自訂名稱')
-      });
-    }
-
-    return rows;
-  }
-
-  // Group parsed rows by invoice number for preview display
-  groupByInvoice(rows) {
-    const map = new Map();
-    for (const r of rows) {
-      if (!map.has(r.invoiceNo)) {
-        map.set(r.invoiceNo, { invoiceNo: r.invoiceNo, date: r.date, store: r.store, items: [] });
-      }
-      map.get(r.invoiceNo).items.push(r);
-    }
-    return [...map.values()];
-  }
-
-  // Minimal CSV split that handles quoted fields
-  _splitCsv(line) {
-    const result = [];
-    let cur = '', inQ = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (ch === '"') { inQ = !inQ; continue; }
-      if (ch === ',' && !inQ) { result.push(cur); cur = ''; continue; }
-      cur += ch;
-    }
-    result.push(cur);
-    return result;
-  }
-}
-
-// ══════════════════════════════════════════════════════════════
-// GOOGLE DRIVE SERVICE
+// GOOGLE DRIVE SERVICE — with #PWA-Cost-Record folder
 // ══════════════════════════════════════════════════════════════
 class DriveService {
-  constructor() {
-    this.token = null;
-    this._ready = false;
-    this._folderId = null;
-  }
+  constructor() { this.token=null; this._ready=false; this._folderId=null; }
 
   async init(clientId) {
-    if (!clientId) return;
-    if (this._ready && this.clientId === clientId) return;
-    this.clientId = clientId;
-    await this._loadGIS();
-    this._ready = true;
+    if(this._ready||!clientId) return;
+    this.clientId=clientId; await this._loadGIS(); this._ready=true;
   }
 
   _loadGIS() {
-    if (window.google && window.google.accounts) return Promise.resolve();
-    return new Promise(resolve => {
-      if (document.querySelector('script[src*="accounts.google.com/gsi"]')) {
-        const wait = setInterval(() => {
-          if (window.google && window.google.accounts) {
-            clearInterval(wait);
-            resolve();
-          }
-        }, 100);
+    if(window.google&&window.google.accounts) return Promise.resolve();
+    return new Promise(resolve=>{
+      if(document.querySelector('script[src*="accounts.google.com/gsi"]')){
+        const wait=setInterval(()=>{if(window.google&&window.google.accounts){clearInterval(wait);resolve();}},100);
         return;
       }
-      const s = document.createElement('script');
-      s.src = 'https://accounts.google.com/gsi/client';
-      s.onload = resolve;
-      document.head.appendChild(s);
+      const s=document.createElement('script');s.src='https://accounts.google.com/gsi/client';s.onload=resolve;document.head.appendChild(s);
     });
   }
 
-  async getToken(forcePrompt = false) {
-    if (this.token && !forcePrompt) return this.token;
-    if (!this.clientId) throw new Error('請先在設定中填寫 Google Client ID');
+  async getToken() {
+    if(this.token) return this.token;
+    if(!this.clientId) throw new Error('請先在設定中填寫 Google Client ID');
     await this._loadGIS();
-    return new Promise((resolve, reject) => {
-      const tc = google.accounts.oauth2.initTokenClient({
-        client_id: this.clientId,
-        scope: 'https://www.googleapis.com/auth/drive.file',
-        callback: r => r.error ? reject(new Error(r.error)) : resolve((this.token = r.access_token))
+    return new Promise((resolve,reject)=>{
+      const tc=google.accounts.oauth2.initTokenClient({
+        client_id:this.clientId,
+        scope:'https://www.googleapis.com/auth/drive.file',
+        callback:r=>r.error?reject(new Error(r.error)):resolve((this.token=r.access_token))
       });
-      tc.requestAccessToken({ prompt: forcePrompt ? 'consent select_account' : 'select_account' });
+      tc.requestAccessToken({prompt:'select_account'});
     });
   }
 
-  async _fetchJson(url, options = {}) {
+  async getFolderId() {
+    if(this._folderId) return this._folderId;
     const token = await this.getToken();
-    const res = await fetch(url, {
-      ...options,
-      headers: {
-        ...(options.headers || {}),
-        Authorization: `Bearer ${token}`
-      }
+    // Search for folder
+    const q = encodeURIComponent(`name='${DRIVE_FOLDER}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`,
+      {headers:{Authorization:`Bearer ${token}`}});
+    const d = await res.json();
+    if(d.files&&d.files.length>0){ this._folderId=d.files[0].id; return this._folderId; }
+    // Create folder
+    const cr = await fetch('https://www.googleapis.com/drive/v3/files',{
+      method:'POST', headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+      body:JSON.stringify({name:DRIVE_FOLDER, mimeType:'application/vnd.google-apps.folder'})
     });
-    if (!res.ok) throw new Error(`Drive API ${res.status}`);
-    return res.json();
-  }
-
-  async ensureBackupFolder() {
-    if (this._folderId) return this._folderId;
-    const q = encodeURIComponent(`name='${DRIVE_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
-    const search = await this._fetchJson(
-      `https://www.googleapis.com/drive/v3/files?q=${q}&pageSize=1&fields=files(id,name)`
-    );
-    if (search.files?.length) {
-      this._folderId = search.files[0].id;
-      return this._folderId;
-    }
-
-    const created = await this._fetchJson('https://www.googleapis.com/drive/v3/files', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: DRIVE_FOLDER_NAME,
-        mimeType: 'application/vnd.google-apps.folder'
-      })
-    });
-    this._folderId = created.id;
-    return this._folderId;
+    const nd = await cr.json();
+    this._folderId = nd.id; return this._folderId;
   }
 
   async listBackups() {
-    const folderId = await this.ensureBackupFolder();
-    const q = encodeURIComponent(`'${folderId}' in parents and name contains '${DRIVE_PREFIX}' and trashed=false`);
-    const data = await this._fetchJson(
-      `https://www.googleapis.com/drive/v3/files?q=${q}&orderBy=modifiedTime desc&pageSize=5&fields=files(id,name,modifiedTime,size)`
-    );
-    return data.files || [];
+    const token=await this.getToken();
+    const folderId=await this.getFolderId();
+    const q=encodeURIComponent(`'${folderId}' in parents and name contains 'backup' and trashed=false`);
+    const res=await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&orderBy=modifiedTime desc&pageSize=5&fields=files(id,name,modifiedTime,size)`,
+      {headers:{Authorization:`Bearer ${token}`}});
+    if(!res.ok) throw new Error(`Drive API ${res.status}`);
+    const d=await res.json(); return d.files||[];
   }
 
   async uploadBackup(data) {
-    const token = await this.getToken();
-    const folderId = await this.ensureBackupFolder();
-    const fileName = `${DRIVE_PREFIX}-${new Date().toISOString().slice(0,19).replace(/[T:]/g,'-')}.json`;
-    const content = JSON.stringify(data, null, 2);
-    const boundary = '-------cost_record_backup';
-    const body = [
+    const token=await this.getToken();
+    const folderId=await this.getFolderId();
+    const fileName=`backup-${new Date().toISOString().slice(0,19).replace(/[T:]/g,'-')}.json`;
+    const content=JSON.stringify(data,null,2);
+    const boundary='-------cost_record_v2';
+    const body=[
       `--${boundary}`,
-      'Content-Type: application/json; charset=UTF-8',
-      '',
-      JSON.stringify({ name: fileName, mimeType: 'application/json', parents: [folderId] }),
-      `--${boundary}`,
-      'Content-Type: application/json',
-      '',
-      content,
-      `--${boundary}--`
+      'Content-Type: application/json; charset=UTF-8','',
+      JSON.stringify({name:fileName,mimeType:'application/json',parents:[folderId]}),
+      `--${boundary}`,'Content-Type: application/json','',content,`--${boundary}--`
     ].join('\r\n');
-
-    const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': `multipart/related; boundary=${boundary}`
-      },
+    const res=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',{
+      method:'POST',
+      headers:{Authorization:`Bearer ${token}`,'Content-Type':`multipart/related; boundary=${boundary}`},
       body
     });
-    if (!res.ok) throw new Error(`Upload failed ${res.status}`);
+    if(!res.ok) throw new Error(`Upload failed ${res.status}`);
     return res.json();
   }
 
   async downloadBackup(fileId) {
-    const token = await this.getToken();
-    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (!res.ok) throw new Error(`Download failed ${res.status}`);
+    const token=await this.getToken();
+    const res=await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,{headers:{Authorization:`Bearer ${token}`}});
+    if(!res.ok) throw new Error(`Download failed ${res.status}`);
     return res.json();
   }
 }
 
 // ══════════════════════════════════════════════════════════════
-// CURRENCY SERVICE
+// CURRENCY SERVICE — Free exchange rate API
 // ══════════════════════════════════════════════════════════════
 class CurrencyService {
-  constructor() {
-    this.cache = new Map();
+  constructor() { this._cache={}; this._cacheTime={}; }
+
+  async getRates(baseCurrency='TWD') {
+    const now=Date.now();
+    if(this._cache[baseCurrency]&&(now-this._cacheTime[baseCurrency])<3600000) return this._cache[baseCurrency];
+    try {
+      const res=await fetch(`https://open.er-api.com/v6/latest/${baseCurrency}`);
+      if(!res.ok) throw new Error('API error');
+      const d=await res.json();
+      this._cache[baseCurrency]=d.rates;
+      this._cacheTime[baseCurrency]=now;
+      return d.rates;
+    } catch(e) {
+      // Fallback static rates (approximate)
+      const fallback={TWD:{TWD:1,JPY:4.8,CNY:0.22,EUR:0.029,USD:0.031},
+        JPY:{JPY:1,TWD:0.21,CNY:0.047,EUR:0.006,USD:0.0065},
+        CNY:{CNY:1,TWD:4.4,JPY:21.1,EUR:0.13,USD:0.138},
+        EUR:{EUR:1,TWD:34.5,JPY:161,CNY:7.7,USD:1.08},
+        USD:{USD:1,TWD:32,JPY:149,CNY:7.2,EUR:0.93}};
+      return fallback[baseCurrency]||{};
+    }
   }
 
-  async getRate(from, to, date) {
-    if (!from || !to || from === to) return 1;
-    const safeDate = date || fmt.today();
-    const key = `${from}_${to}_${safeDate}`;
-    if (this.cache.has(key)) return this.cache.get(key);
-    const url = `https://api.frankfurter.dev/v1/${safeDate}?base=${encodeURIComponent(from)}&symbols=${encodeURIComponent(to)}`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`匯率服務暫時無法使用（${res.status}）`);
-    const data = await res.json();
-    const rate = Number(data?.rates?.[to]);
-    if (!rate || Number.isNaN(rate)) throw new Error(`查無 ${from} → ${to} 匯率`);
-    this.cache.set(key, rate);
-    return rate;
-  }
-
-  async convert(amount, from, to, date) {
-    const num = Number(amount || 0);
-    if (!num || from === to) return num;
-    const rate = await this.getRate(from, to, date);
-    return num * rate;
+  async convert(amount, fromCurrency, toCurrency) {
+    if(fromCurrency===toCurrency) return amount;
+    const rates=await this.getRates(fromCurrency);
+    const rate=rates[toCurrency]||1;
+    return Math.round(amount*rate*100)/100;
   }
 }
 
-// MAIN APP BELOW
+// ══════════════════════════════════════════════════════════════
+// CSV INVOICE PARSER
+// ══════════════════════════════════════════════════════════════
+class CsvInvoiceParser {
+  parse(text) {
+    const lines=text.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
+    const HEADER_COLS=['載具自訂名稱','發票日期','發票號碼','發票金額','發票狀態','折讓','賣方統一編號','賣方名稱','賣方地址','買方統編','消費明細_數量','消費明細_單價','消費明細_金額','消費明細_品名'];
+    const rows=[];let headerFound=false,colMap={};
+    for(const rawLine of lines){
+      const line=rawLine.trim();if(!line) continue;
+      if(line.startsWith('捐贈或作廢')||line.startsWith('注意')) continue;
+      const cols=this._splitCsv(line);
+      if(!headerFound){
+        if(cols.some(c=>c.includes('發票日期')||c.includes('發票號碼'))){
+          headerFound=true;cols.forEach((c,i)=>{colMap[c.trim()]=i;});continue;
+        }
+        if(cols.length>=14&&/^\d{8}$/.test(cols[1])){
+          headerFound=true;HEADER_COLS.forEach((h,i)=>{colMap[h]=i;});
+        }else{continue;}
+      }
+      if(cols.length<4) continue;
+      const get=key=>(cols[colMap[key]]||'').trim();
+      const amount=parseFloat(get('消費明細_金額')||get('發票金額')||'0');
+      const rawDate=get('發票日期');
+      if(amount<=0||!/^\d{8}$/.test(rawDate)) continue;
+      rows.push({date:`${rawDate.slice(0,4)}-${rawDate.slice(4,6)}-${rawDate.slice(6,8)}`,invoiceNo:get('發票號碼'),amount,description:get('消費明細_品名')||get('賣方名稱')||'(未命名)',store:get('賣方名稱'),status:get('發票狀態'),carrier:get('載具自訂名稱')});
+    }
+    return rows;
+  }
+  groupByInvoice(rows){
+    const map=new Map();
+    for(const r of rows){if(!map.has(r.invoiceNo)){map.set(r.invoiceNo,{invoiceNo:r.invoiceNo,date:r.date,store:r.store,items:[]});}map.get(r.invoiceNo).items.push(r);}
+    return [...map.values()];
+  }
+  _splitCsv(line){const result=[];let cur='',inQ=false;for(let i=0;i<line.length;i++){const ch=line[i];if(ch==='"'){inQ=!inQ;continue;}if(ch===','&&!inQ){result.push(cur);cur='';continue;}cur+=ch;}result.push(cur);return result;}
+}
 
 // ══════════════════════════════════════════════════════════════
 // UTILITY HELPERS
 // ══════════════════════════════════════════════════════════════
 const fmt = {
-  money: n => `NT$${Number(n||0).toLocaleString('zh-TW')}`,
-  moneyWithCurrency: (n, currency='TWD') => {
-    const meta = CURRENCY_OPTIONS.find(c => c.code === currency) || CURRENCY_OPTIONS[0];
-    const value = Number(n || 0);
-    const fractionDigits = ['JPY', 'TWD'].includes(currency) ? 0 : 2;
-    return `${meta.symbol}${value.toLocaleString('zh-TW', { maximumFractionDigits: fractionDigits, minimumFractionDigits: 0 })}`;
-  },
-  currencyLabel: code => {
-    const meta = CURRENCY_OPTIONS.find(c => c.code === code);
-    return meta ? `${meta.label} ${meta.code}` : code;
-  },
-  date: d => { if(!d) return ''; const [y,m,day]=d.split('-'); return `${y}/${m}/${day}`; },
-  monthLabel: (y,m) => `${y} 年 ${m} 月`,
-  today: () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+  money:(n,cur='TWD')=>{const sym=CURRENCIES[cur]?.symbol||'$';return `${sym}${Number(n||0).toLocaleString('zh-TW')}`;},
+  date:d=>{if(!d)return '';const[y,m,day]=d.split('-');return`${y}/${m}/${day}`;},
+  monthLabel:(y,m)=>`${y} 年 ${m} 月`,
+  today:()=>{const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
 };
-function genId() { return `${Date.now()}-${Math.random().toString(36).slice(2,7)}`; }
-function getCatIcon(cat2) { return CAT_ICONS[cat2]||CAT_ICONS['其他']; }
+function genId(){return`${Date.now()}-${Math.random().toString(36).slice(2,7)}`;}
+function getCatIcon(name){return CAT_ICONS[name]||'📁';}
 
-// Color palette for charts
-const CHART_COLORS = ['#f59e0b','#3b82f6','#22c55e','#f43f5e','#a78bfa','#f97316','#2dd4bf','#f472b6','#84cc16','#fb923c'];
+const CHART_COLORS=['#10b981','#3b82f6','#f59e0b','#f43f5e','#a78bfa','#f97316','#06b6d4','#84cc16','#ec4899','#8b5cf6'];
 
 // ══════════════════════════════════════════════════════════════
-// MAIN APP  V0.6
+// MAIN APP  V2.0
 // ══════════════════════════════════════════════════════════════
 class App {
   constructor() {
     this.store      = new DataStore();
-    this.invoice    = new InvoiceService();
     this.csvParser  = new CsvInvoiceParser();
     this.drive      = new DriveService();
-    this.fx         = new CurrencyService();
+    this.currency   = new CurrencyService();
     this.view       = 'home';
     this.today      = fmt.today();
     this.selected   = fmt.today();
@@ -653,55 +391,187 @@ class App {
     this.statsYear  = new Date().getFullYear();
     this.statsMonth = new Date().getMonth()+1;
     this.statsCustom = false;
-    this.statsSortMode = 'amount-desc'; // 'amount-desc'|'amount-asc'|'date-desc'|'date-asc'
-    this._statsOpenCats = new Set(); // preserve expanded state across sorts
+    this.statsSortMode = 'amount-desc';
+    this._statsOpenCats = new Set();
     this._toastTimer = null;
     this._editId = null;
     this._swipeStartX = null;
     this._swipeStartY = null;
+    this._swipeCooling = false;
     this._isDarkMode = localStorage.getItem('theme') !== 'light';
-    this._versionCheckTimer = null;
-    this._versionEventsBound = false;
-    this._swRegistration = null;
-    this._swReloading = false;
+    this._smSortMode = 'name';
   }
 
   // ─── INIT ────────────────────────────────────────────────────
   init() {
-    syncCategoryIconMap(this.store.data.categories);
     this._setupNav();
-    this._setupVersionBadge();
     this._setupUpdateBanner();
     this._registerSW();
-    this._startVersionChecks();
     this.renderView();
     const {googleClientId}=this.store.data.settings;
     if(googleClientId) this.drive.init(googleClientId).catch(()=>{});
-    // Hidden CSV input
     const ci=document.createElement('input');
     ci.type='file';ci.id='csv-invoice-input';ci.accept='.csv';ci.style.display='none';
     document.body.appendChild(ci);
     ci.addEventListener('change',e=>this._handleCsvFile(e));
-    // FAB click
-    document.addEventListener('click',e=>{
-      if(e.target.closest('#nav-add-btn')) this.openExpenseModal(null);
-    });
-    // Apply saved theme
+    document.addEventListener('click',e=>{if(e.target.closest('#nav-add-btn')) this.openExpenseModal(null);});
     this._applyTheme(this._isDarkMode);
-    // Theme toggle button
     document.getElementById('theme-toggle-btn')?.addEventListener('click',()=>{
-      this._isDarkMode = !this._isDarkMode;
-      localStorage.setItem('theme', this._isDarkMode ? 'dark' : 'light');
+      this._isDarkMode=!this._isDarkMode;
+      localStorage.setItem('theme',this._isDarkMode?'dark':'light');
       this._applyTheme(this._isDarkMode);
     });
   }
 
   _applyTheme(dark) {
-    document.body.classList.toggle('light-mode', !dark);
-    const btn = document.getElementById('theme-toggle-btn');
-    if(btn) btn.textContent = dark ? '🌙' : '☀️';
-    // Also update canvas pie colors if on stats
-    if(this.view === 'stats') this.renderView();
+    document.body.classList.toggle('light-mode',!dark);
+    const btn=document.getElementById('theme-toggle-btn');
+    if(btn) btn.textContent=dark?'🌙':'☀️';
+  }
+
+  _setupNav() {
+// ══════════════════════════════════════════════════════════════
+// UTILITY HELPERS
+// ══════════════════════════════════════════════════════════════
+const fmt = {
+  money: (n, currency) => {
+    const sym = {TWD:'$',JPY:'¥',CNY:'¥',EUR:'€',USD:'$'}[currency||'TWD']||'$';
+    const val = Number(n||0);
+    return `${sym}${val%1===0?val.toLocaleString('zh-TW'):val.toFixed(2)}`;
+  },
+  date: d => { if(!d) return ''; const [y,m,day]=d.split('-'); return `${y}/${m}/${day}`; },
+  monthLabel: (y,m) => `${y} 年 ${m} 月`,
+  today: () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+};
+function genId() { return `${Date.now()}-${Math.random().toString(36).slice(2,7)}`; }
+
+// ── Category Icons ──────────────────────────────────────────
+const ICON_LIST = [
+  '🍳','🍱','🍜','🍔','🍕','🍣','🧁','🧋','🥤','🍺','🥗','🍰',
+  '🚗','🚌','🚊','✈️','🚕','⛽','🛵','🚲','🚢',
+  '🏠','💡','💧','📱','💻','📺','🛋','🧹','🔧',
+  '👕','👟','👜','💄','💍','🕶️',
+  '🎮','🎬','🎵','📚','🎨','🏋️','⚽','🎳','🎭',
+  '💊','🏥','🦷','🩺',
+  '📖','✏️','🎓','🔬',
+  '💼','💰','📊','🏦','💳',
+  '🎁','🎉','👨‍👩‍👧','🌸','🎀',
+  '🛒','🧺','🌿','☕','🍵',
+  '💅','✂️','🧴','🪥',
+  '📦','📋','❓','💬','⭐','🏷️','📌'
+];
+
+const CAT_ICON_MAP = {
+  // 大分類
+  '飲食':'🍱','交通':'🚗','家居':'🏠','購物':'🛒','娛樂':'🎮','醫療':'💊',
+  '學習':'📚','生活':'🌸','個人':'💼','家庭':'👨‍👩‍👧','其他':'📦',
+  // 小分類
+  '早餐':'🍳','午餐':'🍱','晚餐':'🍜','宵夜':'🌙','點心':'🧁','飲料':'🧋',
+  '水果':'🍎','酒類':'🍺',
+  '加油費':'⛽','停車費':'🅿️','火車':'🚊','計程車':'🚕','摩托車':'🛵','汽車':'🚗','單車':'🚲',
+  '家具':'🛋️','家電':'📺','日常用品':'🧹','電費':'💡','水費':'💧','網路費':'📡',
+  '管理費':'🏢','燃料費':'🔥','洗衣費':'👕','電話費':'📞',
+  '市場':'🛒','衣物':'👕','鞋子':'👟','電子產品':'💻','美妝保養':'💄',
+  '配件':'⌚','禮物':'🎁',
+  '電影':'🎬','影音':'🎵','運動':'⚽','遊戲':'🎮','展覽':'🎨','遊樂園':'🎡','消遣':'☕','博弈':'🎲',
+  '門診':'🏥','藥品':'💊','保健食品':'🧴','牙齒保健':'🦷','健康檢查':'🩺',
+  '書籍':'📖','課程':'🎓','教材':'✏️','文具':'📝','證書':'🏆',
+  '住宿':'🏨','旅行':'✈️','按摩':'💆','派對':'🎉',
+  '蜜月旅行':'💕','美容美髮':'💇',
+  '保險':'🛡️','稅金':'📋','理髮':'✂️','捐款':'🤝','通話費':'📱','社交':'🤝','稅':'📋',
+  '才藝':'🎨','玩具':'🪆','禮金':'💰','結婚':'💍',
+  '其他':'📦'
+};
+
+function getCatIcon2(name, customIcons) {
+  if(customIcons && customIcons[name]) return customIcons[name];
+  return CAT_ICON_MAP[name] || '📦';
+}
+
+// Exchange rates (relative to TWD)
+const CURRENCIES = {
+  TWD: { symbol:'$',  name:'台幣 TWD', rate: 1      },
+  JPY: { symbol:'¥',  name:'日幣 JPY', rate: 4.7    },
+  CNY: { symbol:'¥',  name:'人民幣 CNY',rate:0.22   },
+  EUR: { symbol:'€',  name:'歐元 EUR', rate:0.029   },
+  USD: { symbol:'$',  name:'美金 USD', rate:0.031   }
+};
+
+const CHART_COLORS = ['#f59e0b','#3b82f6','#22c55e','#f43f5e','#a78bfa','#f97316','#2dd4bf','#f472b6','#84cc16','#fb923c'];
+
+// ══════════════════════════════════════════════════════════════
+// MAIN APP  V2.0
+// ══════════════════════════════════════════════════════════════
+class App {
+  constructor() {
+    this.store     = new DataStore();
+    this.invoice   = new InvoiceService();
+    this.csvParser = new CsvInvoiceParser();
+    this.drive     = new DriveService();
+    this.view      = 'home';
+    this.today     = fmt.today();
+    this.selected  = fmt.today();
+    this.calendarYear  = new Date().getFullYear();
+    this.calendarMonth = new Date().getMonth()+1;
+    this.statsYear  = new Date().getFullYear();
+    this.statsMonth = new Date().getMonth()+1;
+    this.statsCustom = false;
+    this.statsSortMode = 'amount-desc';
+    this._statsOpenCats = new Set();
+    this._toastTimer = null;
+    this._editId = null;
+    this._swipeStartX = null;
+    this._swipeStartY = null;
+    this._swipeCooling = false;
+    this._isDarkMode = localStorage.getItem('theme') !== 'light';
+    this._currency = this.store.data.currency || 'TWD';
+  }
+
+  // ─── HELPERS ──────────────────────────────────────────────────
+  get currency() { return this._currency; }
+  set currency(v) {
+    this._currency = v;
+    this.store.data.currency = v;
+    this.store.save();
+    document.getElementById('currency-btn').textContent = v;
+  }
+  get customIcons() { return this.store.data.categoryIcons || {}; }
+  catIcon(name) { return getCatIcon2(name, this.customIcons); }
+  money(n) { return fmt.money(n, this._currency); }
+
+  // ─── INIT ────────────────────────────────────────────────────
+  init() {
+    this._setupNav();
+    this._setupUpdateBanner();
+    this._registerSW();
+    this.renderView();
+    const {googleClientId}=this.store.data.settings;
+    if(googleClientId) this.drive.init(googleClientId).catch(()=>{});
+    // CSV input
+    const ci=document.createElement('input');
+    ci.type='file';ci.id='csv-invoice-input';ci.accept='.csv';ci.style.display='none';
+    document.body.appendChild(ci);
+    ci.addEventListener('change',e=>this._handleCsvFile(e));
+    // FAB
+    document.addEventListener('click',e=>{
+      if(e.target.closest('#nav-add-btn')) this.openExpenseModal(null);
+    });
+    // Theme
+    this._applyTheme(this._isDarkMode);
+    document.getElementById('theme-toggle-btn')?.addEventListener('click',()=>{
+      this._isDarkMode=!this._isDarkMode;
+      localStorage.setItem('theme',this._isDarkMode?'dark':'light');
+      this._applyTheme(this._isDarkMode);
+    });
+    // Currency
+    const cb=document.getElementById('currency-btn');if(cb) cb.textContent=this._currency;
+    document.getElementById('currency-btn')?.addEventListener('click',()=>this._openCurrencyPicker());
+  }
+
+  _applyTheme(dark) {
+    document.body.classList.toggle('light-mode',!dark);
+    const btn=document.getElementById('theme-toggle-btn');
+    if(btn) btn.textContent=dark?'🌙':'☀️';
   }
 
   _setupNav() {
@@ -715,149 +585,31 @@ class App {
     });
   }
 
-  _setupVersionBadge() {
-    const badge = document.getElementById('version-badge');
-    if (badge) badge.textContent = VERSION_META.version || 'V1_2';
-  }
-
   _setupUpdateBanner() {
-    document.getElementById('update-banner')?.addEventListener('click', async () => {
-      const waiting = this._swRegistration?.waiting;
-      if (waiting) {
-        waiting.postMessage({ type: 'SKIP_WAITING' });
-        return;
-      }
-      await this._checkForGithubUpdate(true);
-    });
-  }
-
-  _showUpdateBanner(message = '🔄 發現新版本，自動更新中…') {
-    const el = document.getElementById('update-banner');
-    if (!el) return;
-    el.textContent = message;
-    el.style.display = 'block';
-  }
-
-  _compareBuildVersions(a, b) {
-    const normalize = value => String(value || '')
-      .trim()
-      .toUpperCase()
-      .replace(/^V/, '')
-      .split(/[_.-]/)
-      .map(part => Number.parseInt(part, 10) || 0);
-    const pa = normalize(a);
-    const pb = normalize(b);
-    const len = Math.max(pa.length, pb.length);
-    for (let i = 0; i < len; i += 1) {
-      const diff = (pa[i] || 0) - (pb[i] || 0);
-      if (diff !== 0) return diff > 0 ? 1 : -1;
-    }
-    return 0;
-  }
-
-  _resolveVersionUrl() {
-    const raw = (VERSION_META.githubVersionUrl || './version.json').trim() || './version.json';
-    return new URL(raw, window.location.href).toString();
-  }
-
-  async _fetchRemoteVersionMeta() {
-    const url = new URL(this._resolveVersionUrl());
-    url.searchParams.set('_ts', Date.now());
-    const res = await fetch(url.toString(), { cache: 'no-store' });
-    if (!res.ok) throw new Error(`版本檢查失敗 (${res.status})`);
-    return res.json();
-  }
-
-  async _checkForGithubUpdate(force = false) {
-    if (!navigator.onLine) {
-      if (force) this.toast('目前離線，無法檢查新版本', 'info');
-      return false;
-    }
-    try {
-      const remote = await this._fetchRemoteVersionMeta();
-      const remoteBuild = remote?.build || remote?.version || '';
-      const localBuild = VERSION_META.build || VERSION_META.version || '';
-      const isNewer = this._compareBuildVersions(remoteBuild, localBuild) > 0;
-      if (!isNewer) {
-        if (force) this.toast(`目前已是最新版本 ${VERSION_META.version}`, 'success');
-        return false;
-      }
-      this._showUpdateBanner(`🔄 發現新版本 ${remote.version || remote.build}，自動更新中…`);
-      await this._triggerServiceWorkerUpdate();
-      return true;
-    } catch (err) {
-      if (force) this.toast(err.message || '版本檢查失敗', 'error');
-      return false;
-    }
-  }
-
-  async _triggerServiceWorkerUpdate() {
-    if (!('serviceWorker' in navigator)) {
+    document.getElementById('update-banner')?.addEventListener('click',()=>{
+      navigator.serviceWorker?.controller?.postMessage({type:'SKIP_WAITING'});
       window.location.reload();
-      return;
-    }
-    const reg = this._swRegistration || await navigator.serviceWorker.getRegistration();
-    this._swRegistration = reg || null;
-    if (!reg) {
-      window.location.reload();
-      return;
-    }
-    await reg.update().catch(() => {});
-    if (reg.waiting) {
-      reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-      return;
-    }
-    this._showUpdateBanner('🔄 新版本下載中，完成後會自動重新載入…');
-  }
-
-  _startVersionChecks() {
-    this._checkForGithubUpdate(false);
-    if (this._versionEventsBound) return;
-    this._versionEventsBound = true;
-    const check = () => this._checkForGithubUpdate(false);
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) check();
     });
-    window.addEventListener('online', check);
-    const intervalMs = Number(VERSION_META.versionCheckIntervalMs) || 0;
-    if (intervalMs > 0) {
-      this._versionCheckTimer = window.setInterval(check, intervalMs);
-    }
   }
 
   _registerSW() {
-    if (!('serviceWorker' in navigator)) return;
-    navigator.serviceWorker.register('./service-worker.js').then(reg => {
-      this._swRegistration = reg;
-      if (reg.waiting) {
-        this._showUpdateBanner('🔄 發現已下載的新版本，自動套用中…');
-        reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-      }
-      reg.addEventListener('updatefound', () => {
-        const installing = reg.installing;
-        if (!installing) return;
-        installing.addEventListener('statechange', () => {
-          if (installing.state === 'installed' && navigator.serviceWorker.controller) {
-            this._showUpdateBanner('🔄 新版本安裝完成，重新載入中…');
-            if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-          }
+    if(!('serviceWorker' in navigator)) return;
+    navigator.serviceWorker.register('./service-worker.js').then(reg=>{
+      reg.addEventListener('updatefound',()=>{
+        reg.installing?.addEventListener('statechange',()=>{
+          if(reg.installing?.state==='installed'&&navigator.serviceWorker.controller)
+            document.getElementById('update-banner').style.display='block';
         });
       });
-    }).catch(err => {
-      console.error('SW register failed', err);
     });
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (this._swReloading) return;
-      this._swReloading = true;
-      window.location.reload();
-    });
+    navigator.serviceWorker.addEventListener('controllerchange',()=>window.location.reload());
   }
 
   renderView() {
     const main=document.getElementById('main-content');
     const h1=document.querySelector('#app-header h1');
-    main.classList.toggle('home-mode', this.view==='home');
-    switch(this.view) {
+    main.classList.toggle('home-mode',this.view==='home');
+    switch(this.view){
       case 'home':     main.innerHTML=this._buildHome();     h1.textContent='記帳本'; break;
       case 'search':   main.innerHTML=this._buildSearch();   h1.textContent='搜尋';   break;
       case 'settings': main.innerHTML=this._buildSettings(); h1.textContent='設定';   break;
@@ -866,67 +618,49 @@ class App {
     this._attachViewEvents();
   }
 
-
-  _expenseTwd(expense) {
-    return Number((expense?.amountTwd ?? expense?.amount) || 0);
-  }
-
-  _sumTwd(expenses = []) {
-    return expenses.reduce((sum, exp) => sum + this._expenseTwd(exp), 0);
-  }
-
-  _findCategory(cat1) {
-    return this.store.data.categories.find(cat => cat.name === cat1) || null;
-  }
-
-  _findSubCategory(cat1, cat2) {
-    return this._findCategory(cat1)?.subs?.find(sub => sub.name === cat2) || null;
-  }
-
-  _getCategoryIcon(cat1, cat2) {
-    return this._findSubCategory(cat1, cat2)?.icon
-      || this._findCategory(cat1)?.icon
-      || getCatIcon(cat2 || cat1 || '其他');
-  }
-
-  _getSubOptions(cat1) {
-    return this._findCategory(cat1)?.subs || [];
-  }
-
-  _formatExpenseAmount(expense) {
-    return fmt.moneyWithCurrency(expense?.amount || 0, expense?.currency || 'TWD');
-  }
-
-  _formatGroupAmount(items = []) {
-    const currencies = [...new Set(items.map(it => it.currency || 'TWD'))];
-    if (currencies.length === 1) {
-      const total = items.reduce((sum, it) => sum + Number(it.amount || 0), 0);
-      return fmt.moneyWithCurrency(total, currencies[0]);
-    }
-    return `${currencies.length} 種幣別`;
-  }
-
-  _buildCurrencyOptions(selected = 'TWD') {
-    return CURRENCY_OPTIONS.map(cur => `<option value="${cur.code}" ${cur.code===selected?'selected':''}>${cur.label} (${cur.code})</option>`).join('');
-  }
-
-  _roundCurrencyValue(amount, currency) {
-    const fractionDigits = ['JPY', 'TWD'].includes(currency) ? 0 : 2;
-    return Number(Number(amount || 0).toFixed(fractionDigits));
+  // ─── CURRENCY PICKER ──────────────────────────────────────────
+  _openCurrencyPicker() {
+    const cur = this._currency;
+    this._openSheet(`
+      <div class="modal-handle"></div>
+      <div class="modal-header"><div class="modal-title">💱 選擇幣別</div><button class="modal-close" id="modal-close-btn">✕</button></div>
+      <div class="modal-body" style="gap:8px;">
+        <p style="font-size:11px;color:var(--text2);line-height:1.7;">選擇後，所有金額顯示將換算為該幣別。匯率為預設固定值（非即時），如需精確請至設定頁自訂。</p>
+        ${Object.entries(CURRENCIES).map(([code,info])=>`
+          <div class="currency-item${cur===code?' active':''}" data-code="${code}">
+            <div class="currency-symbol">${info.symbol}</div>
+            <div class="currency-info">
+              <div class="currency-name">${info.name}</div>
+              <div class="currency-rate">1 TWD = ${code==='TWD'?'1':CURRENCIES[code].rate} ${code}</div>
+            </div>
+            ${cur===code?'<span class="currency-check">✓</span>':''}
+          </div>`).join('')}
+        <div style="padding:10px 0;border-top:1px solid var(--border);font-size:11px;color:var(--text3);">
+          💡 幣別轉換使用固定匯率，如需更新請在設定頁修改。
+        </div>
+      </div>`);
+    document.querySelectorAll('.currency-item[data-code]').forEach(el=>{
+      el.addEventListener('click',()=>{
+        this.currency = el.dataset.code;
+        this.closeModal();
+        this.renderView();
+        this.toast(`已切換至 ${CURRENCIES[el.dataset.code].name}`,'success');
+      });
+    });
   }
 
   // ─── HOME ─────────────────────────────────────────────────────
   _buildHome() {
     const {calendarYear:y,calendarMonth:m}=this;
     const monthly=this.store.getByMonth(y,m);
-    const total=this._sumTwd(monthly);
+    const total=monthly.reduce((s,e)=>s+this._displayAmt(e),0);
     const pending=monthly.filter(e=>e.status==='pending').length;
     const datesSet=this.store.getDatesWithExpenses(y,m);
     const catMap={};
-    monthly.forEach(e=>{const k=e.category1||'未分類';catMap[k]=(catMap[k]||0)+this._expenseTwd(e);});
+    monthly.forEach(e=>{const k=e.category1||'未分類';catMap[k]=(catMap[k]||0)+this._displayAmt(e);});
     const catEntries=Object.entries(catMap).sort((a,b)=>b[1]-a[1]);
     const day=this.store.getByDate(this.selected);
-    const dayTotal=this._sumTwd(day);
+    const dayTotal=day.reduce((s,e)=>s+this._displayAmt(e),0);
     const pendingEl=pending>0
       ?`<span class="pending-badge" id="pending-badge">${pending}</span>`
       :`<span style="color:var(--text2)">${pending}</span>`;
@@ -946,24 +680,22 @@ class App {
         </div>
         <div class="month-summary">
           <div class="month-stats">
-            <div class="stat-item"><div class="stat-label">當月支出(TWD)</div><div class="stat-value big">${fmt.money(total)}</div></div>
+            <div class="stat-item"><div class="stat-label">當月支出</div><div class="stat-value big">${this.money(total)}</div></div>
             <div class="stat-item"><div class="stat-label">筆數</div><div class="stat-value">${monthly.length}</div></div>
             <div class="stat-item"><div class="stat-label">待分類</div><div class="stat-value">${pendingEl}</div></div>
           </div>
           ${catEntries.length?`<div class="cat-breakdown">${catEntries.slice(0,3).map(([name,amt])=>`
             <div class="cat-row">
+              <div class="cat-row-icon">${this.catIcon(name)}</div>
               <div class="cat-row-name">${name}</div>
               <div class="cat-row-bar-wrap"><div class="cat-row-bar" style="width:${Math.round((amt/total)*100)}%"></div></div>
-              <div class="cat-row-amount">${fmt.money(amt)}</div>
+              <div class="cat-row-amount">${this.money(amt)}</div>
             </div>`).join('')}</div>`:''}
         </div>
       </div>
       <div class="home-bottom">
         <div class="day-panel-header">
-          <div class="day-panel-title">
-            ${fmt.date(this.selected)}
-            ${dayTotal>0?`<span class="day-total-amt">${fmt.money(dayTotal)}</span>`:''}
-          </div>
+          <div class="day-panel-title">${fmt.date(this.selected)}${dayTotal>0?`<span class="day-total-amt">${this.money(dayTotal)}</span>`:''}</div>
           <div style="display:flex;gap:5px;">
             <button class="btn-day-action btn-import" id="invoice-fetch-btn">🧾 發票</button>
             <button class="btn-day-action btn-add" id="add-expense-btn">＋ 記帳</button>
@@ -977,51 +709,54 @@ class App {
       </div>`;
   }
 
+  _displayAmt(e) {
+    const amt = Number(e.amount||0);
+    const origCur = e.currency || 'TWD';
+    const dispCur = this._currency;
+    if(origCur === dispCur) return amt;
+    // Convert: origCur → TWD → dispCur
+    const toTwd = origCur==='TWD' ? amt : amt / (CURRENCIES[origCur]?.rate||1);
+    return dispCur==='TWD' ? toTwd : toTwd * (CURRENCIES[dispCur]?.rate||1);
+  }
 
   _groupExpenses(expenses) {
     const result=[],invMap=new Map();
-    const sorted=[...expenses].sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''));
-    for(const e of sorted){
+    for(const e of [...expenses].sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''))){
       if(e.source==='invoice'&&e.invoiceNo){
         if(!invMap.has(e.invoiceNo)){
           const g={type:'invoice-group',invoiceNo:e.invoiceNo,store:e.store||'',date:e.date,items:[]};
           invMap.set(e.invoiceNo,g);result.push(g);
         }
         invMap.get(e.invoiceNo).items.push(e);
-      } else {
-        result.push({type:'single',...e});
-      }
+      } else { result.push({type:'single',...e}); }
     }
     return result;
   }
 
   _buildGroupCard(g) {
-    const total=g.items.reduce((s,i)=>s+Number(i.amount||0),0);
+    const total=g.items.reduce((s,i)=>s+this._displayAmt(i),0);
     const pendingN=g.items.filter(i=>i.status==='pending').length;
     const cats=[...new Set(g.items.filter(i=>i.category1).map(i=>i.category1))];
     const first=g.items[0];
-    const moreCount=g.items.length-1;
+    const more=g.items.length-1;
     return `
       <div class="ref-card" data-grp="${g.invoiceNo}">
-        <div class="ref-card-icon">${this._storeIcon(g.store)}</div>
+        <div class="ref-card-icon">${this.catIcon(cats[0]||'其他')}</div>
         <div class="ref-card-body">
           <div class="ref-card-title">${g.store||'電子發票'}</div>
-          <div class="ref-card-sub">${first?.description||'(未命名)'}${moreCount>0?` <span class="ref-more">+${moreCount}項</span>`:''}</div>
+          <div class="ref-card-sub">${first?.description||'(未命名)'}${more>0?` <span class="ref-more">+${more}項</span>`:''}</div>
           <div class="ref-card-tags">
             ${pendingN>0?`<span class="ref-tag pending">待分類${pendingN>1?' '+pendingN:''}</span>`:''}
             ${cats.slice(0,2).map(c=>`<span class="ref-tag">${c}</span>`).join('')}
             <span class="ref-tag inv">🧾</span>
           </div>
         </div>
-        <div class="ref-card-right">
-          <div class="ref-card-amount">${this._formatGroupAmount(g.items)}</div>
-          <div class="ref-card-count">${g.items.length} 項</div>
-        </div>
+        <div class="ref-card-right"><div class="ref-card-amount">${this.money(total)}</div><div class="ref-card-count">${g.items.length}項</div></div>
       </div>`;
   }
 
   _buildSingleCard(e) {
-    const icon=this._getCategoryIcon(e.category1, e.category2 || (e.status==='pending'?'待分類':'其他'));
+    const icon=this.catIcon(e.category2||e.category1||(e.status==='pending'?'待分類':'其他'));
     const title=e.category2||e.category1||(e.status==='pending'?'待分類':'未分類');
     return `
       <div class="ref-card" data-id="${e.id}">
@@ -1033,32 +768,18 @@ class App {
             ${e.status==='pending'?`<span class="ref-tag pending">待分類</span>`:''}
             ${e.category1&&e.status!=='pending'?`<span class="ref-tag">${e.category1}</span>`:''}
             ${e.source==='invoice'?`<span class="ref-tag inv">🧾</span>`:''}
-            ${e.store?`<span class="ref-tag store">🏪 ${e.store}</span>`:''}
+            ${e.store?`<span class="ref-tag store">${e.store}</span>`:''}
+            ${e.currency&&e.currency!=='TWD'?`<span class="ref-tag cur">${e.currency}</span>`:''}
           </div>
         </div>
-        <div class="ref-card-right">
-          <div class="ref-card-amount">${this._formatExpenseAmount(e)}</div>
-        </div>
+        <div class="ref-card-right"><div class="ref-card-amount">${this.money(this._displayAmt(e))}</div></div>
       </div>`;
   }
 
-  _storeIcon(store) {
-    if(!store) return '🧾';
-    const s=store.toLowerCase();
-    if(s.includes('全家')||s.includes('family')) return '🏪';
-    if(s.includes('7-11')||s.includes('統一')) return '🏪';
-    if(s.includes('全聯')||s.includes('家福')) return '🛒';
-    if(s.includes('大創')||s.includes('daiso')) return '🛍️';
-    if(s.includes('麥當勞')) return '🍔';
-    if(s.includes('星巴克')) return '☕';
-    return '🧾';
-  }
-
   _getWeekNum(year,month,day) {
-    // US week number: week 1 contains Jan 1, weeks start on Sunday
     const date=new Date(year,month-1,day);
     const jan1=new Date(year,0,1);
-    const jan1dow=jan1.getDay(); // 0=Sun
+    const jan1dow=jan1.getDay();
     const dayOfYear=Math.round((date-jan1)/86400000);
     return Math.floor((dayOfYear+jan1dow)/7)+1;
   }
@@ -1068,47 +789,26 @@ class App {
     const days=new Date(year,month,0).getDate();
     const prevDays=new Date(year,month-1,0).getDate();
     const dows=['日','一','二','三','四','五','六'];
-    // Grid has 8 cols: week-num + 7 days
     let h='<div class="cal-grid-wk">';
-    // Header row: blank week col + day headers
     h+='<div class="cal-dow cal-wk-hdr">週</div>';
     h+=dows.map(d=>`<div class="cal-dow">${d}</div>`).join('');
-
-    // Always render exactly 6 rows = 42 cells (fixed height, no jump between months)
-    const FIXED_ROWS = 6;
-    const totalRows = FIXED_ROWS;
-
-    for(let row=0;row<totalRows;row++){
-      // Determine the Sunday date for this row to get week number
-      const rowStartCell=row*7; // 0-based
-      // Which actual date is cell rowStartCell?
+    const FIXED_ROWS=6;
+    for(let row=0;row<FIXED_ROWS;row++){
+      const rowStartCell=row*7;
       let wkYear=year,wkMonth=month,wkDay;
-      const cellDayOfMonth=rowStartCell-first+1;
-      if(cellDayOfMonth<1){
-        // in prev month
-        const prevDate=new Date(year,month-2,prevDays+cellDayOfMonth);
-        wkYear=prevDate.getFullYear();wkMonth=prevDate.getMonth()+1;wkDay=prevDate.getDate();
-      } else if(cellDayOfMonth>days){
-        // in next month
-        const nextDate=new Date(year,month,cellDayOfMonth-days);
-        wkYear=nextDate.getFullYear();wkMonth=nextDate.getMonth()+1;wkDay=nextDate.getDate();
-      } else {
-        wkDay=cellDayOfMonth;
-      }
-      const wkNum=this._getWeekNum(wkYear,wkMonth,wkDay);
-      h+=`<div class="cal-wk-num">WK${wkNum}</div>`;
-
-      // 7 day cells for this row
+      const cmd=rowStartCell-first+1;
+      if(cmd<1){const pd=new Date(year,month-2,prevDays+cmd);wkYear=pd.getFullYear();wkMonth=pd.getMonth()+1;wkDay=pd.getDate();}
+      else if(cmd>days){const nd=new Date(year,month,cmd-days);wkYear=nd.getFullYear();wkMonth=nd.getMonth()+1;wkDay=nd.getDate();}
+      else{wkDay=cmd;}
+      h+=`<div class="cal-wk-num">WK${this._getWeekNum(wkYear,wkMonth,wkDay)}</div>`;
       for(let col=0;col<7;col++){
         const cell=row*7+col;
         if(cell<first){
           const d=prevDays-first+1+cell;
           h+=`<div class="cal-day other-month"><div class="cal-day-num">${d}</div><div class="cal-dot-wrap"></div></div>`;
         } else if(cell>=first+days){
-          // Next month trailing days (grey out)
-          const nextDate=new Date(year,month,cell-first-days+1);
-          const d=nextDate.getDate();
-          h+=`<div class="cal-day other-month"><div class="cal-day-num">${d}</div><div class="cal-dot-wrap"></div></div>`;
+          const nd=new Date(year,month,cell-first-days+1);
+          h+=`<div class="cal-day other-month"><div class="cal-day-num">${nd.getDate()}</div><div class="cal-dot-wrap"></div></div>`;
         } else {
           const d=cell-first+1;
           const ds=`${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
@@ -1130,7 +830,7 @@ class App {
       <div class="search-box">
         <span class="search-icon">🔍</span>
         <input id="search-input" placeholder="搜尋消費項目、店家、分類…" type="search" autocomplete="off" autocorrect="off" autocapitalize="off">
-        <button class="search-clear hidden" id="search-clear" title="清除">✕</button>
+        <button class="search-clear hidden" id="search-clear">✕</button>
       </div>
       <div class="search-results-info" id="search-info">輸入關鍵字以搜尋</div>
       <div id="search-results" class="expense-list" style="padding:0;gap:5px;"></div>
@@ -1140,98 +840,96 @@ class App {
   // ─── SETTINGS ─────────────────────────────────────────────────
   _buildSettings() {
     const s=this.store.data.settings;
-    const lastSync=this.store.data.lastSync;
     const storeMap=this.store.data.storeMapping||[];
-    const cats=this.store.data.categories||[];
-    const subCount=cats.reduce((sum,cat)=>sum+(cat.subs||[]).length,0);
+    const lastSync=this.store.data.lastSync;
     return `<div class="settings-wrap">
-      <div class="settings-section">
-        <div class="settings-section-title">🗂 分類與規則</div>
-        <div class="settings-item" id="open-category-manager-btn">
-          <div>
-            <div class="settings-item-label">分類</div>
-            <div class="settings-item-sub">${cats.length} 個大分類・${subCount} 個小分類・可編輯 icon</div>
-          </div>
-          <span class="settings-item-arrow">›</span>
+
+      <div class="settings-group-label">帳務設定</div>
+
+      <!-- Categories -->
+      <div class="settings-card" id="open-categories-btn">
+        <div class="settings-card-icon">${this.catIcon('飲食')}</div>
+        <div class="settings-card-body">
+          <div class="settings-card-title">分類管理</div>
+          <div class="settings-card-sub">大/小分類編輯、圖示設定</div>
         </div>
-        <div class="settings-item" id="open-store-mapping-btn">
-          <div>
-            <div class="settings-item-label">店家分類規則</div>
-            <div class="settings-item-sub">共 ${storeMap.length} 條規則，匯入發票時自動套用</div>
-          </div>
-          <span class="settings-item-arrow">›</span>
+        <span class="settings-arrow">›</span>
+      </div>
+
+      <!-- Store Mapping -->
+      <div class="settings-card" id="open-store-mapping-btn">
+        <div class="settings-card-icon">🏪</div>
+        <div class="settings-card-body">
+          <div class="settings-card-title">店家自動分類</div>
+          <div class="settings-card-sub">共 ${storeMap.length} 條規則</div>
+        </div>
+        <span class="settings-arrow">›</span>
+      </div>
+
+      <!-- Currency -->
+      <div class="settings-card" id="open-currency-settings-btn">
+        <div class="settings-card-icon">💱</div>
+        <div class="settings-card-body">
+          <div class="settings-card-title">幣別設定</div>
+          <div class="settings-card-sub">目前：${CURRENCIES[this._currency]?.name||'台幣 TWD'}</div>
+        </div>
+        <span class="settings-arrow">›</span>
+      </div>
+
+      <div class="settings-group-label">備份與同步</div>
+
+      <!-- Google Drive -->
+      <div class="settings-card" id="open-drive-settings-btn">
+        <div class="settings-card-icon">☁️</div>
+        <div class="settings-card-body">
+          <div class="settings-card-title">Google Drive 備份</div>
+          <div class="settings-card-sub">${lastSync?`上次同步：${lastSync}`:'尚未同步'}</div>
+        </div>
+        <span class="settings-arrow">›</span>
+      </div>
+
+      <!-- Local Backup -->
+      <div class="settings-card" id="open-local-backup-btn">
+        <div class="settings-card-icon">💾</div>
+        <div class="settings-card-body">
+          <div class="settings-card-title">本機備份</div>
+          <div class="settings-card-sub">匯出 / 匯入 JSON 檔案</div>
+        </div>
+        <span class="settings-arrow">›</span>
+      </div>
+
+      <!-- CSV Import -->
+      <div class="settings-card" id="open-csv-import-btn">
+        <div class="settings-card-icon">📂</div>
+        <div class="settings-card-body">
+          <div class="settings-card-title">發票 CSV 匯入</div>
+          <div class="settings-card-sub">財政部 CSV 格式</div>
+        </div>
+        <span class="settings-arrow">›</span>
+      </div>
+
+      <div class="settings-group-label">AI 助手</div>
+
+      <!-- Gemini -->
+      <div class="settings-card" id="open-gemini-settings-btn">
+        <div class="settings-card-icon">🤖</div>
+        <div class="settings-card-body">
+          <div class="settings-card-title">Gemini AI</div>
+          <div class="settings-card-sub">${s.geminiApiKey?'已設定 API Key':'未設定'}</div>
+        </div>
+        <span class="settings-arrow">›</span>
+      </div>
+
+      <div class="settings-group-label">其他</div>
+
+      <div class="settings-card danger" id="clear-data-btn">
+        <div class="settings-card-icon">⚠️</div>
+        <div class="settings-card-body">
+          <div class="settings-card-title">清除所有資料</div>
+          <div class="settings-card-sub">此操作無法復原</div>
         </div>
       </div>
 
-      <div class="settings-section">
-        <div class="settings-section-title">💱 多幣別記錄</div>
-        <div style="padding:10px 12px;display:flex;flex-direction:column;gap:8px;">
-          <div class="backup-card-sub">支援台幣、日幣、人民幣、歐元、美金。新增或編輯記錄時可切換幣值，系統會依消費日期換算；統計會統一以 TWD 計算。</div>
-        </div>
-      </div>
-
-      <div class="settings-section">
-        <div class="settings-section-title">🤖 Gemini AI</div>
-        <div style="padding:10px 12px;display:flex;flex-direction:column;gap:8px;">
-          <div class="form-group"><label class="form-label">API Key</label>
-            <div class="api-key-wrap"><input class="form-input" id="s-geminiKey" type="password" placeholder="Gemini API Key" value="${s.geminiApiKey||''}">
-            <button class="api-key-toggle" data-target="s-geminiKey">👁</button></div></div>
-          <div class="form-group"><label class="form-label">模型</label>
-            <select class="form-select" id="s-geminiModel">${GEMINI_MODELS.map(m=>`<option value="${m}" ${s.geminiModel===m?'selected':''}>${m}</option>`).join('')}</select></div>
-          <button class="btn-primary" id="save-gemini-settings-btn" style="font-size:12px;">儲存 AI 設定</button>
-        </div>
-      </div>
-
-      <div class="settings-section">
-        <div class="settings-section-title">☁️ Google Drive 同步</div>
-        <div style="padding:10px 12px;display:flex;flex-direction:column;gap:8px;">
-          <div class="form-group"><label class="form-label">OAuth Client ID</label>
-            <input class="form-input" id="s-gClientId" placeholder="xxxx.apps.googleusercontent.com" value="${s.googleClientId||''}"></div>
-          <button class="btn-primary" id="save-drive-settings-btn" style="font-size:12px;">儲存 Google 設定</button>
-          <div class="backup-card-sub">備份會存到 Google Drive 的 <b>${DRIVE_FOLDER_NAME}</b> 資料夾內；開啟同步面板後會列出最近 5 筆備份供你選擇。</div>
-          ${lastSync?`<div class="last-sync-info">上次同步：${lastSync}</div>`:''}
-          <button class="btn-secondary" id="open-drive-sync-btn">☁️ 開啟同步面板</button>
-        </div>
-      </div>
-
-      <div class="settings-section">
-        <div class="settings-section-title">💾 本機備份</div>
-        <div style="padding:10px 12px;display:flex;flex-direction:column;gap:8px;">
-          <div class="backup-action-row">
-            <button class="btn-primary" id="export-local-btn" style="font-size:12px;">📤 匯出 JSON</button>
-            <button class="btn-secondary" id="import-local-btn" style="font-size:12px;">📥 匯入 JSON</button>
-          </div>
-          <input type="file" id="import-file-input" accept=".json" style="display:none">
-          <button class="btn-danger" id="clear-data-btn">⚠️ 清除所有資料</button>
-        </div>
-      </div>
-    </div>`;
-  }
-
-  _buildCatNode(cat,ci) {
-    return `<div class="cat-parent" data-ci="${ci}">
-      <div class="cat-parent-row">
-        <button class="cat-toggle" data-ci="${ci}">▶</button>
-        <div class="cat-parent-name">${cat.name}</div>
-        <div class="cat-action-btns">
-          <button class="cat-action-btn" data-action="rename-cat" data-ci="${ci}">改名</button>
-          <button class="cat-action-btn danger" data-action="del-cat" data-ci="${ci}">刪除</button>
-        </div>
-      </div>
-      <div class="cat-children" id="cat-children-${ci}">
-        ${(cat.subs||[]).map((sub,si)=>`
-          <div class="cat-child-row" data-ci="${ci}" data-si="${si}">
-            <div class="cat-child-name">${getCatIcon(sub)} ${sub}</div>
-            <div class="cat-action-btns">
-              <button class="cat-action-btn" data-action="rename-sub" data-ci="${ci}" data-si="${si}">改名</button>
-              <button class="cat-action-btn danger" data-action="del-sub" data-ci="${ci}" data-si="${si}">刪除</button>
-            </div>
-          </div>`).join('')}
-        <div class="cat-add-row">
-          <input class="cat-add-input" id="sub-input-${ci}" placeholder="新增小分類…">
-          <button class="btn-primary" data-action="add-sub" data-ci="${ci}" style="padding:5px 11px;font-size:11px;">新增</button>
-        </div>
-      </div>
     </div>`;
   }
 
@@ -1254,118 +952,105 @@ class App {
     </div>`;
   }
 
-  _statsFromDefault() {
-    return `${this.statsYear}-${String(this.statsMonth).padStart(2,'0')}-01`;
-  }
+  _statsFromDefault() { return `${this.statsYear}-${String(this.statsMonth).padStart(2,'0')}-01`; }
 
   _renderStats(expenses) {
-    const total=this._sumTwd(expenses);
-    // Build cat maps
-    const catMap={};
-    const subMap={};
-    const catExpenses={};
+    const total=expenses.reduce((s,e)=>s+this._displayAmt(e),0);
+    const catMap={},subMap={},catExpenses={};
     expenses.forEach(e=>{
       const k1=e.category1||'未分類';
-      catMap[k1]=(catMap[k1]||0)+this._expenseTwd(e);
+      const amt=this._displayAmt(e);
+      catMap[k1]=(catMap[k1]||0)+amt;
       if(!catExpenses[k1]) catExpenses[k1]=[];
       catExpenses[k1].push(e);
       const k2=k1+'||'+(e.category2||'(未分小類)');
       if(!subMap[k2]) subMap[k2]={amount:0,items:[]};
-      subMap[k2].amount+=this._expenseTwd(e);
-      subMap[k2].items.push(e);
+      subMap[k2].amount+=amt; subMap[k2].items.push(e);
     });
     const catEntries=Object.entries(catMap).sort((a,b)=>b[1]-a[1]);
-
-    const el=document.getElementById('stats-content');
-    if(!el) return;
-
-    // Sort cat entries
-    const sortedCatEntries = (() => {
-      const e = [...catEntries];
+    const sortedCatEntries=(()=>{
+      const e=[...catEntries];
       if(this.statsSortMode==='amount-desc') return e.sort((a,b)=>b[1]-a[1]);
       if(this.statsSortMode==='amount-asc')  return e.sort((a,b)=>a[1]-b[1]);
-      const latestDate = (name)=> (catExpenses[name]||[]).reduce((mx,x)=>x.date>mx?x.date:mx,'');
-      if(this.statsSortMode==='date-desc') return e.sort((a,b)=>latestDate(b[0]).localeCompare(latestDate(a[0])));
-      if(this.statsSortMode==='date-asc')  return e.sort((a,b)=>latestDate(a[0]).localeCompare(latestDate(b[0])));
-      return e.sort((a,b)=>b[1]-a[1]);
+      const ld=(n)=>(catExpenses[n]||[]).reduce((mx,x)=>x.date>mx?x.date:mx,'');
+      if(this.statsSortMode==='date-desc') return e.sort((a,b)=>ld(b[0]).localeCompare(ld(a[0])));
+      if(this.statsSortMode==='date-asc')  return e.sort((a,b)=>ld(a[0]).localeCompare(ld(b[0])));
+      return e;
     })();
-
+    const el=document.getElementById('stats-content');
+    if(!el) return;
     el.innerHTML=`
       <div class="stats-total-card">
-        <div class="stats-total-label">總支出 (TWD)</div>
-        <div class="stats-total-amt">${fmt.money(total)}</div>
-        <div class="stats-total-sub">${expenses.length} 筆記錄</div>
+        <div class="stats-total-label">總支出</div>
+        <div class="stats-total-amt">${this.money(total)}</div>
+        <div class="stats-total-sub">${expenses.length} 筆記錄 · ${CURRENCIES[this._currency]?.name||'TWD'}</div>
       </div>
-
       <div class="stats-chart-row">
-        <div class="stats-pie-wrap">
-          <canvas id="stats-pie" width="160" height="160"></canvas>
-        </div>
-        <div class="stats-legend" id="stats-legend">
+        <div class="stats-pie-wrap"><canvas id="stats-pie" width="160" height="160"></canvas></div>
+        <div class="stats-legend">
           ${catEntries.map(([name,amt],i)=>{
             const pct=total>0?((amt/total)*100).toFixed(1):0;
             return `<div class="stats-legend-item">
               <span class="stats-cat-dot" style="background:${CHART_COLORS[i%CHART_COLORS.length]}"></span>
+              <span class="stats-legend-icon">${this.catIcon(name)}</span>
               <span class="stats-legend-name">${name}</span>
               <span class="stats-legend-pct">${pct}%</span>
             </div>`;
           }).join('')}
         </div>
       </div>
-
       <div class="stats-sort-bar">
         <span class="stats-sort-label">排序：</span>
         <button class="stats-sort-btn${this.statsSortMode==='amount-desc'?' active':''}" data-sort="amount-desc">金額↓</button>
         <button class="stats-sort-btn${this.statsSortMode==='amount-asc'?' active':''}" data-sort="amount-asc">金額↑</button>
-        <button class="stats-sort-btn${this.statsSortMode==='date-desc'?' active':''}" data-sort="date-desc">最新↓</button>
-        <button class="stats-sort-btn${this.statsSortMode==='date-asc'?' active':''}" data-sort="date-asc">最舊↓</button>
+        <button class="stats-sort-btn${this.statsSortMode==='date-desc'?' active':''}" data-sort="date-desc">最新</button>
+        <button class="stats-sort-btn${this.statsSortMode==='date-asc'?' active':''}" data-sort="date-asc">最舊</button>
       </div>
-
-      <div class="stats-cat-list" id="stats-cat-list">
-        ${sortedCatEntries.length?sortedCatEntries.map(([name,amt],i)=>{
+      <div class="stats-cat-list">
+        ${sortedCatEntries.length?sortedCatEntries.map(([name,amt])=>{
           const pct=total>0?((amt/total)*100).toFixed(1):0;
-          const color=CHART_COLORS[catEntries.findIndex(([n])=>n===name)%CHART_COLORS.length];
-          // sub-categories for this cat
+          const ci=catEntries.findIndex(([n])=>n===name);
+          const color=CHART_COLORS[ci%CHART_COLORS.length];
           const subs=Object.entries(subMap).filter(([k])=>k.startsWith(name+'||')).sort((a,b)=>b[1].amount-a[1].amount);
           return `<div class="stats-cat-item" data-cat="${name}">
             <div class="stats-cat-header">
+              <span style="font-size:16px;margin-right:2px;">${this.catIcon(name)}</span>
               <span class="stats-cat-dot-big" style="background:${color}"></span>
               <span class="stats-cat-name">${name}</span>
               <div class="stats-cat-bar-wrap"><div class="stats-cat-bar" style="width:${pct}%;background:${color}"></div></div>
               <span class="stats-cat-pct">${pct}%</span>
-              <span class="stats-cat-amt">${fmt.money(amt)}</span>
+              <span class="stats-cat-amt">${this.money(amt)}</span>
               <span class="stats-cat-toggle">▼</span>
             </div>
-            <div class="stats-cat-sub-list" id="scat-${name.replace(/\s/g,'_')}">
+            <div class="stats-cat-sub-list" id="scat-${name.replace(/[\s\/]/g,'_')}">
               ${subs.map(([k,sd])=>{
                 const subName=k.split('||')[1];
                 const sp=total>0?((sd.amount/total)*100).toFixed(1):0;
-                const sortedItems=(()=>{
-                  const it=[...sd.items];
-                  if(this.statsSortMode==='amount-desc') return it.sort((a,b)=>Number(b.amount)-Number(a.amount));
-                  if(this.statsSortMode==='amount-asc')  return it.sort((a,b)=>Number(a.amount)-Number(b.amount));
-                  if(this.statsSortMode==='date-asc')    return it.sort((a,b)=>a.date.localeCompare(b.date));
-                  return it.sort((a,b)=>b.date.localeCompare(a.date));
-                })();
+                const sortedItems=this.statsSortMode==='amount-asc'
+                  ?[...sd.items].sort((a,b)=>this._displayAmt(a)-this._displayAmt(b))
+                  :this.statsSortMode==='date-asc'
+                    ?[...sd.items].sort((a,b)=>a.date.localeCompare(b.date))
+                    :this.statsSortMode==='date-desc'
+                      ?[...sd.items].sort((a,b)=>b.date.localeCompare(a.date))
+                      :[...sd.items].sort((a,b)=>this._displayAmt(b)-this._displayAmt(a));
                 return `<div class="stats-sub-cat-header">
+                    <span style="font-size:13px;margin-right:4px;">${this.catIcon(subName)}</span>
                     <span class="stats-sub-cat-label">${subName}</span>
                     <span class="stats-sub-cat-pct">${sp}%</span>
-                    <span class="stats-sub-cat-amt">${fmt.money(sd.amount)}</span>
+                    <span class="stats-sub-cat-amt">${this.money(sd.amount)}</span>
                   </div>
                   ${sortedItems.map(it=>`
                     <div class="stats-expense-row" data-id="${it.id}">
                       <span class="stats-expense-date">${fmt.date(it.date)}</span>
                       <span class="stats-expense-desc">${it.description||'(未命名)'}</span>
                       ${it.store?`<span class="stats-expense-store">${it.store}</span>`:''}
-                      <span class="stats-expense-amt">${this._formatExpenseAmount(it)}</span>
+                      <span class="stats-expense-amt">${this.money(this._displayAmt(it))}</span>
                     </div>`).join('')}`;
               }).join('')}
             </div>
           </div>`;
         }).join(''):`<div class="empty-state"><div class="icon">📊</div><p>此期間無記錄</p></div>`}
       </div>`;
-
-    // Draw donut pie with sub-segments
     requestAnimationFrame(()=>this._drawPie(catEntries,subMap,total));
   }
 
@@ -1373,55 +1058,33 @@ class App {
     const canvas=document.getElementById('stats-pie');
     if(!canvas||!catEntries.length){canvas&&(canvas.style.display='none');return;}
     const ctx=canvas.getContext('2d');
-    const cx=80,cy=80,outerR=72,innerR=42,midR=58;
-    const pieBg = getComputedStyle(document.body).getPropertyValue('--bg').trim()||'#181825';
-    const pieText = getComputedStyle(document.body).getPropertyValue('--text').trim()||'#eeeef8';
+    const cx=80,cy=80,outerR=72,innerR=42;
+    const pieBg=getComputedStyle(document.body).getPropertyValue('--bg').trim()||'#181825';
+    const pieText=getComputedStyle(document.body).getPropertyValue('--text').trim()||'#eeeef8';
     ctx.clearRect(0,0,160,160);
     let angle=-Math.PI/2;
-
     catEntries.forEach(([name,amt],i)=>{
       const color=CHART_COLORS[i%CHART_COLORS.length];
       const catSlice=total>0?(amt/total)*Math.PI*2:0;
-      // Draw outer ring: sub-categories within this slice
       const subs=Object.entries(subMap).filter(([k])=>k.startsWith(name+'||')).sort((a,b)=>b[1].amount-a[1].amount);
       if(subs.length>1){
-        let subAngle=angle;
+        let sa=angle;
         subs.forEach(([,sd],si)=>{
-          const subSlice=total>0?(sd.amount/total)*Math.PI*2:0;
-          const alpha=0.6+0.4*(1-si/subs.length);
-          ctx.beginPath(); ctx.moveTo(cx,cy);
-          ctx.arc(cx,cy,outerR,subAngle,subAngle+subSlice); ctx.closePath();
-          ctx.fillStyle=color+'CC';
-          // Alternate shade
-          const shade=si%2===0?color:`${color}88`;
-          ctx.fillStyle=shade;
-          ctx.fill();
-          ctx.strokeStyle=pieBg; ctx.lineWidth=1.5; ctx.stroke();
-          // Inner separator line for sub
-          if(si>0){
-            ctx.beginPath(); ctx.moveTo(cx,cy);
-            ctx.lineTo(cx+Math.cos(subAngle)*outerR, cy+Math.sin(subAngle)*outerR);
-            ctx.strokeStyle=pieBg+'cc'; ctx.lineWidth=1; ctx.stroke();
-          }
-          subAngle+=subSlice;
+          const ss=total>0?(sd.amount/total)*Math.PI*2:0;
+          ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,outerR,sa,sa+ss);ctx.closePath();
+          ctx.fillStyle=si%2===0?color:`${color}88`;ctx.fill();
+          ctx.strokeStyle=pieBg;ctx.lineWidth=1.5;ctx.stroke();
+          sa+=ss;
         });
       } else {
-        ctx.beginPath(); ctx.moveTo(cx,cy);
-        ctx.arc(cx,cy,outerR,angle,angle+catSlice); ctx.closePath();
-        ctx.fillStyle=color; ctx.fill();
-        ctx.strokeStyle=pieBg; ctx.lineWidth=1.5; ctx.stroke();
+        ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,outerR,angle,angle+catSlice);ctx.closePath();
+        ctx.fillStyle=color;ctx.fill();ctx.strokeStyle=pieBg;ctx.lineWidth=1.5;ctx.stroke();
       }
       angle+=catSlice;
     });
-
-    // Donut hole
-    ctx.beginPath(); ctx.arc(cx,cy,innerR,0,Math.PI*2);
-    ctx.fillStyle=pieBg; ctx.fill();
-
-    // Center text
-    ctx.fillStyle=pieText; ctx.textAlign='center';
-    ctx.font='bold 11px DM Mono,monospace';
-    ctx.fillText(fmt.money(total),cx,cy+4);
+    ctx.beginPath();ctx.arc(cx,cy,innerR,0,Math.PI*2);ctx.fillStyle=pieBg;ctx.fill();
+    ctx.fillStyle=pieText;ctx.textAlign='center';ctx.font='bold 11px DM Mono,monospace';
+    ctx.fillText(this.money(total),cx,cy+4);
   }
 
   // ─── VIEW EVENTS ──────────────────────────────────────────────
@@ -1435,43 +1098,33 @@ class App {
   }
 
   _attachHomeEvents() {
-    // Calendar click
     document.querySelectorAll('.cal-day[data-date]').forEach(el=>{
       el.addEventListener('click',()=>{
-        this.selected=el.dataset.date;
-        this.renderView();
+        this.selected=el.dataset.date;this.renderView();
         setTimeout(()=>document.querySelector('.home-bottom')?.scrollTo({top:0,behavior:'smooth'}),50);
       });
     });
-    // Month navigation
     document.getElementById('prev-month-btn')?.addEventListener('click',()=>this._changeMonth(-1));
     document.getElementById('next-month-btn')?.addEventListener('click',()=>this._changeMonth(1));
     document.getElementById('goto-today-btn')?.addEventListener('click',()=>{
-      const now=new Date();
-      this.calendarYear=now.getFullYear(); this.calendarMonth=now.getMonth()+1;
-      this.selected=fmt.today(); this.today=fmt.today(); this.renderView();
+      const now=new Date();this.calendarYear=now.getFullYear();this.calendarMonth=now.getMonth()+1;
+      this.selected=fmt.today();this.today=fmt.today();this.renderView();
     });
-    // Calendar swipe
-    this._attachSwipe(document.getElementById('cal-swipe-wrap'));
-    // ref-card: single→edit, group→open group detail sheet
+    this._attachHomeSwipe(document.getElementById('main-content'));
     document.querySelectorAll('.ref-card[data-id]').forEach(el=>{
       el.addEventListener('click',e=>{e.stopPropagation();this.openExpenseModal(el.dataset.id);});
     });
     document.querySelectorAll('.ref-card[data-grp]').forEach(el=>{
       el.addEventListener('click',e=>{e.stopPropagation();this._openInvoiceGroupSheet(el.dataset.grp);});
     });
-    // Pending badge
     document.getElementById('pending-badge')?.addEventListener('click',()=>this._openPendingModal());
-    // Day panel buttons
     document.getElementById('add-expense-btn')?.addEventListener('click',()=>this.openExpenseModal(null));
     document.getElementById('invoice-fetch-btn')?.addEventListener('click',()=>this.openInvoiceImportModal());
-    // Swipe on ENTIRE home (home-top + home-bottom) for month change
-    this._attachHomeSwipe(document.getElementById('main-content'));
   }
 
   _changeMonth(delta) {
-    const dir = delta > 0 ? 'left' : 'right';
-    const wrap = document.getElementById('cal-swipe-wrap');
+    const dir=delta>0?'left':'right';
+    const wrap=document.getElementById('cal-swipe-wrap');
     if(wrap){
       wrap.classList.add('cal-exit-'+dir);
       setTimeout(()=>{
@@ -1479,12 +1132,8 @@ class App {
         if(this.calendarMonth<1){this.calendarMonth=12;this.calendarYear--;}
         if(this.calendarMonth>12){this.calendarMonth=1;this.calendarYear++;}
         this.renderView();
-        // enter animation
-        const newWrap=document.getElementById('cal-swipe-wrap');
-        if(newWrap){
-          newWrap.classList.add('cal-enter-'+dir);
-          requestAnimationFrame(()=>requestAnimationFrame(()=>{newWrap.classList.remove('cal-enter-'+dir);}));
-        }
+        const nw=document.getElementById('cal-swipe-wrap');
+        if(nw){nw.classList.add('cal-enter-'+dir);requestAnimationFrame(()=>requestAnimationFrame(()=>nw.classList.remove('cal-enter-'+dir)));}
       },160);
     } else {
       this.calendarMonth+=delta;
@@ -1495,42 +1144,18 @@ class App {
   }
 
   _attachHomeSwipe(el) {
-    // Home-wide swipe for prev/next month — only trigger from left/right edges or fast swipe
     if(!el) return;
-    let sx=null, sy=null;
-    el.addEventListener('touchstart', e=>{
-      sx = e.touches[0].clientX;
-      sy = e.touches[0].clientY;
-    },{passive:true});
-    el.addEventListener('touchend', e=>{
-      if(sx===null) return;
-      const dx = e.changedTouches[0].clientX - sx;
-      const dy = e.changedTouches[0].clientY - sy;
-      // Only trigger on mostly-horizontal swipe from near edge (within 30px of screen edge)
-      // OR fast wide swipe (>120px horizontal)
-      const isEdgeSwipe = sx < 30 || sx > window.innerWidth - 30;
-      const isWideSwipe = Math.abs(dx) > 120 && Math.abs(dx) > Math.abs(dy) * 2;
-      if((isEdgeSwipe || isWideSwipe) && Math.abs(dx) > Math.abs(dy)) {
-        this._changeMonth(dx < 0 ? 1 : -1);
-      }
-      sx = null; sy = null;
-    },{passive:true});
-  }
-
-  _attachSwipe(el) {
-    if(!el) return;
-    el.addEventListener('touchstart',e=>{
-      this._swipeStartX=e.touches[0].clientX;
-      this._swipeStartY=e.touches[0].clientY;
-    },{passive:true});
+    let sx=null,sy=null,fired=false;
+    el.addEventListener('touchstart',e=>{if(this._swipeCooling)return;sx=e.touches[0].clientX;sy=e.touches[0].clientY;fired=false;},{passive:true});
     el.addEventListener('touchend',e=>{
-      if(this._swipeStartX===null) return;
-      const dx=e.changedTouches[0].clientX-this._swipeStartX;
-      const dy=e.changedTouches[0].clientY-this._swipeStartY;
-      if(Math.abs(dx)>Math.abs(dy)&&Math.abs(dx)>40){
+      if(sx===null||fired||this._swipeCooling)return;
+      const dx=e.changedTouches[0].clientX-sx,dy=e.changedTouches[0].clientY-sy;
+      if(Math.abs(dx)>50&&Math.abs(dx)>Math.abs(dy)*2){
+        fired=true;this._swipeCooling=true;
         this._changeMonth(dx<0?1:-1);
+        setTimeout(()=>{this._swipeCooling=false;},500);
       }
-      this._swipeStartX=null; this._swipeStartY=null;
+      sx=null;sy=null;
     },{passive:true});
   }
 
@@ -1540,21 +1165,17 @@ class App {
     if(!input) return;
     let timer;
     input.addEventListener('input',()=>{
-      clearTimeout(timer);
-      clearBtn?.classList.toggle('hidden',!input.value);
+      clearTimeout(timer);clearBtn?.classList.toggle('hidden',!input.value);
       timer=setTimeout(()=>this._doSearch(input.value),200);
     });
     clearBtn?.addEventListener('click',()=>{
-      input.value='';
-      clearBtn.classList.add('hidden');
+      input.value='';clearBtn.classList.add('hidden');
       document.getElementById('search-info').textContent='輸入關鍵字以搜尋';
       document.getElementById('search-results').innerHTML='';
     });
     document.getElementById('search-results')?.addEventListener('click',ev=>{
-      const card=ev.target.closest('[data-id]');
-      if(card) this.openExpenseModal(card.dataset.id);
+      const card=ev.target.closest('[data-id]');if(card)this.openExpenseModal(card.dataset.id);
     });
-    // Prevent zoom on focus - handled by CSS font-size:16px
   }
 
   _doSearch(kw) {
@@ -1566,193 +1187,38 @@ class App {
     info.textContent=`找到 ${results.length} 筆記錄`;
     list.innerHTML=results.length
       ?results.map(e=>`
-        <div class="expense-card" data-id="${e.id}">
-          <div class="expense-cat-icon">${this._getCategoryIcon(e.category1, e.category2||'其他')}</div>
-          <div class="expense-info">
-            <div class="expense-desc">${e.description||'(未命名)'}</div>
-            <div class="expense-meta">
-              ${e.store?`<span class="expense-store">🏪 ${e.store}</span>`:''}
-              <span class="expense-cat-badge" style="color:var(--text3)">${fmt.date(e.date)}</span>
-              ${e.status==='pending'?`<span class="expense-cat-badge pending">待分類</span>`:''}
-            </div>
+        <div class="ref-card" data-id="${e.id}">
+          <div class="ref-card-icon">${this.catIcon(e.category2||e.category1||'其他')}</div>
+          <div class="ref-card-body">
+            <div class="ref-card-title">${e.category2||e.category1||'未分類'}</div>
+            <div class="ref-card-sub">${e.description||'(未命名)'}${e.store?' · '+e.store:''}</div>
+            <div class="ref-card-tags"><span class="ref-tag" style="color:var(--text3)">${fmt.date(e.date)}</span>${e.status==='pending'?`<span class="ref-tag pending">待分類</span>`:''}</div>
           </div>
-          <div class="expense-amount">${this._formatExpenseAmount(e)}</div>
+          <div class="ref-card-right"><div class="ref-card-amount">${this.money(this._displayAmt(e))}</div></div>
         </div>`).join('')
       :`<div class="empty-state"><div class="icon">🔎</div><p>找不到</p></div>`;
   }
 
   _attachSettingsEvents() {
-    document.getElementById('open-category-manager-btn')?.addEventListener('click',()=>this.openCategoryManager());
+    document.getElementById('open-categories-btn')?.addEventListener('click',()=>this._openCategoriesPage());
     document.getElementById('open-store-mapping-btn')?.addEventListener('click',()=>this._openStoreMappingPage());
-    document.getElementById('save-gemini-settings-btn')?.addEventListener('click',()=>{
-      this.store.data.settings.geminiApiKey=document.getElementById('s-geminiKey').value.trim();
-      this.store.data.settings.geminiModel=document.getElementById('s-geminiModel').value;
-      this.store.save();
-      this.toast('已儲存','success');
-    });
-    document.getElementById('save-drive-settings-btn')?.addEventListener('click',()=>{
-      const cid=document.getElementById('s-gClientId').value.trim();
-      this.store.data.settings.googleClientId=cid;
-      this.store.save();
-      if(cid) this.drive.init(cid).catch(()=>{});
-      this.toast('已儲存','success');
-    });
-    document.getElementById('open-drive-sync-btn')?.addEventListener('click',()=>this.openDriveSyncModal());
-    document.querySelectorAll('.api-key-toggle').forEach(btn=>{
-      btn.addEventListener('click',()=>{
-        const inp=document.getElementById(btn.dataset.target);
-        if(!inp) return;
-        inp.type=inp.type==='password'?'text':'password';
-        btn.textContent=inp.type==='password'?'👁':'🙈';
-      });
-    });
-    document.getElementById('export-local-btn')?.addEventListener('click',()=>this.exportLocal());
-    document.getElementById('import-local-btn')?.addEventListener('click',()=>document.getElementById('import-file-input')?.click());
-    document.getElementById('import-file-input')?.addEventListener('change',e=>this.importLocal(e));
+    document.getElementById('open-currency-settings-btn')?.addEventListener('click',()=>this._openCurrencyPicker());
+    document.getElementById('open-drive-settings-btn')?.addEventListener('click',()=>this._openDriveSettingsPage());
+    document.getElementById('open-local-backup-btn')?.addEventListener('click',()=>this._openLocalBackupSheet());
+    document.getElementById('open-csv-import-btn')?.addEventListener('click',()=>this.openInvoiceImportModal());
+    document.getElementById('open-gemini-settings-btn')?.addEventListener('click',()=>this._openGeminiSettings());
     document.getElementById('clear-data-btn')?.addEventListener('click',()=>{
-      if(!confirm('確定清除所有資料？無法復原！')) return;
+      if(!confirm('確定清除所有資料？')) return;
       if(!confirm('再次確認：永久清除所有記帳資料。')) return;
-      localStorage.removeItem(STORAGE_KEY);
-      localStorage.removeItem('cost_record_v1');
-      this.store.data=this.store._default();
-      this.toast('已清除','info');
-      this.renderView();
-    });
-  }
-
-  _promptCatName(title,def,cb){const n=prompt(title,def);if(n&&n.trim())cb(n.trim());}
-
-  _buildCategoryManagerRows() {
-    const cats=this.store.data.categories;
-    return cats.map((cat,ci)=>`
-      <div class="cat-manager-card">
-        <div class="cat-manager-head">
-          <div class="cat-manager-name">${cat.icon||'📁'} ${cat.name}</div>
-          <div class="cat-action-btns">
-            <button class="cat-action-btn" data-cat-act="icon-cat" data-ci="${ci}">圖示</button>
-            <button class="cat-action-btn" data-cat-act="rename-cat" data-ci="${ci}">改名</button>
-            <button class="cat-action-btn danger" data-cat-act="del-cat" data-ci="${ci}">刪除</button>
-          </div>
-        </div>
-        <div class="cat-manager-subs">
-          ${(cat.subs||[]).map((sub,si)=>`
-            <div class="cat-child-row">
-              <div class="cat-child-name">${sub.icon||'🧩'} ${sub.name}</div>
-              <div class="cat-action-btns">
-                <button class="cat-action-btn" data-cat-act="icon-sub" data-ci="${ci}" data-si="${si}">圖示</button>
-                <button class="cat-action-btn" data-cat-act="rename-sub" data-ci="${ci}" data-si="${si}">改名</button>
-                <button class="cat-action-btn danger" data-cat-act="del-sub" data-ci="${ci}" data-si="${si}">刪除</button>
-              </div>
-            </div>`).join('') || '<div class="settings-item-sub" style="padding:0 12px 4px;">尚未建立小分類</div>'}
-          <div class="cat-add-row">
-            <button class="btn-secondary" data-cat-act="add-sub" data-ci="${ci}" style="width:100%;">＋ 新增小分類</button>
-          </div>
-        </div>
-      </div>`).join('');
-  }
-
-  openCategoryManager() {
-    this._openSheet(`
-      <div class="modal-handle"></div>
-      <div class="modal-header"><div class="modal-title">🗂 分類編輯</div><button class="modal-close" id="modal-close-btn">✕</button></div>
-      <div class="modal-body" style="gap:10px;">
-        <div class="backup-card-sub">新增分類會套用預設 icon；你也可以隨時重新挑選。icon 皆內建在 PWA 內，不需額外下載。</div>
-        ${this._buildCategoryManagerRows() || '<div class="empty-state"><div class="icon">🗂</div><p>尚無分類</p></div>'}
-      </div>
-      <div class="modal-footer">
-        <button class="btn-secondary" id="category-add-parent-btn">＋ 新增大分類</button>
-      </div>`);
-
-    document.getElementById('category-add-parent-btn')?.addEventListener('click',()=>{
-      this._promptCatName('新增大分類','',name=>{
-        this.store.data.categories.push({name,icon:'📁',subs:[]});
-        this.store.save();
-        this.openCategoryManager();
-        this.renderView();
-        this.toast('已新增大分類','success');
-      });
-    });
-
-    document.querySelectorAll('[data-cat-act]').forEach(btn=>{
-      btn.addEventListener('click',()=>{
-        const action=btn.dataset.catAct;
-        const ci=Number(btn.dataset.ci);
-        const si=btn.dataset.si!==undefined ? Number(btn.dataset.si) : null;
-        const cats=this.store.data.categories;
-        if(action==='rename-cat') this._promptCatName('修改大分類',cats[ci].name,name=>{cats[ci].name=name;this.store.save();this.openCategoryManager();this.renderView();});
-        else if(action==='del-cat'){if(!confirm(`刪除「${cats[ci].name}」？`))return;cats.splice(ci,1);this.store.save();this.openCategoryManager();this.renderView();this.toast('已刪除','success');}
-        else if(action==='add-sub') this._promptCatName('新增小分類','',name=>{cats[ci].subs.push({name,icon:'🧩'});this.store.save();this.openCategoryManager();this.renderView();this.toast('已新增小分類','success');});
-        else if(action==='rename-sub') this._promptCatName('修改小分類',cats[ci].subs[si].name,name=>{cats[ci].subs[si].name=name;this.store.save();this.openCategoryManager();this.renderView();});
-        else if(action==='del-sub'){if(!confirm(`刪除「${cats[ci].subs[si].name}」？`))return;cats[ci].subs.splice(si,1);this.store.save();this.openCategoryManager();this.renderView();this.toast('已刪除','success');}
-        else if(action==='icon-cat') this.openIconPicker({type:'cat',ci});
-        else if(action==='icon-sub') this.openIconPicker({type:'sub',ci,si});
-      });
-    });
-  }
-
-  openIconPicker(target) {
-    this._openSheet(`
-      <div class="modal-handle"></div>
-      <div class="modal-header"><div class="modal-title">選擇 icon</div><button class="modal-close" id="modal-close-btn">✕</button></div>
-      <div class="modal-body" style="gap:10px;">
-        <div class="icon-picker-grid">
-          ${ICON_OPTIONS.map(icon=>`<button class="icon-picker-btn" data-icon-value="${icon}">${icon}</button>`).join('')}
-        </div>
-      </div>`);
-    document.querySelectorAll('[data-icon-value]').forEach(btn=>{
-      btn.addEventListener('click',()=>{
-        const icon=btn.dataset.iconValue;
-        const cats=this.store.data.categories;
-        if(target.type==='cat') cats[target.ci].icon=icon;
-        else cats[target.ci].subs[target.si].icon=icon;
-        this.store.save();
-        this.openCategoryManager();
-        this.renderView();
-        this.toast('已更新 icon','success');
-      });
-    });
-  }
-
-  async openDriveSyncModal() {
-    this._openSheet(`
-      <div class="modal-handle"></div>
-      <div class="modal-header"><div class="modal-title">☁️ Google Drive 同步</div><button class="modal-close" id="modal-close-btn">✕</button></div>
-      <div class="modal-body" style="gap:10px;">
-        <div class="backup-card-sub">備份位置：<b>${DRIVE_FOLDER_NAME}</b><br>下方由新到舊列出最近 5 筆雲端備份。</div>
-        <button class="btn-primary" id="drive-upload-btn">☁️ 上傳目前資料為新備份</button>
-        <div id="drive-backup-list" class="backup-list"><div class="empty-state"><div class="icon">⏳</div><p>載入中…</p></div></div>
-      </div>`);
-    document.getElementById('drive-upload-btn')?.addEventListener('click',()=>this.driveUpload(true));
-    await this.driveList(true);
-  }
-
-  _bindDriveBackupButtons(listEl) {
-    listEl.querySelectorAll('.backup-item-btn').forEach(btn=>{
-      btn.addEventListener('click',async()=>{
-        if(!confirm('確定從雲端匯入此備份？本機資料將被覆蓋。')) return;
-        btn.textContent='載入中…'; btn.disabled=true;
-        try {
-          const data=await this.drive.downloadBackup(btn.dataset.fileId);
-          if(!confirm(`備份包含 ${(data.expenses||[]).length} 筆記錄
-確定匯入？`)){
-            btn.textContent='匯入'; btn.disabled=false; return;
-          }
-          this.store.import(data);
-          this.toast('已從 Drive 匯入','success');
-          this.renderView();
-          this.closeModal();
-        } catch(err) {
-          this.toast('匯入失敗：'+err.message,'error');
-          btn.textContent='匯入'; btn.disabled=false;
-        }
-      });
+      localStorage.removeItem('cost_record_v1');this.store.data=this.store._default();
+      this.toast('已清除','info');this.renderView();
     });
   }
 
   _attachStatsEvents() {
     this._renderStats(this.store.getByMonth(this.statsYear,this.statsMonth));
     document.getElementById('stats-prev')?.addEventListener('click',()=>{
-      this.statsMonth--; if(this.statsMonth<1){this.statsMonth=12;this.statsYear--;}
+      this.statsMonth--;if(this.statsMonth<1){this.statsMonth=12;this.statsYear--;}
       this.statsCustom=false;
       document.getElementById('stats-month-label').textContent=`${this.statsYear} 年 ${this.statsMonth} 月`;
       document.getElementById('stats-custom-range')?.classList.remove('open');
@@ -1760,7 +1226,7 @@ class App {
       this._renderStats(this.store.getByMonth(this.statsYear,this.statsMonth));
     });
     document.getElementById('stats-next')?.addEventListener('click',()=>{
-      this.statsMonth++; if(this.statsMonth>12){this.statsMonth=1;this.statsYear++;}
+      this.statsMonth++;if(this.statsMonth>12){this.statsMonth=1;this.statsYear++;}
       this.statsCustom=false;
       document.getElementById('stats-month-label').textContent=`${this.statsYear} 年 ${this.statsMonth} 月`;
       document.getElementById('stats-custom-range')?.classList.remove('open');
@@ -1776,79 +1242,311 @@ class App {
       const from=document.getElementById('stats-from')?.value;
       const to=document.getElementById('stats-to')?.value;
       if(!from||!to){this.toast('請選擇日期區間','error');return;}
-      if(from>to){this.toast('起始不能晚於結束','error');return;}
       const exps=this.store.data.expenses.filter(e=>e.date>=from&&e.date<=to);
-      document.getElementById('stats-month-label').textContent=`${from} ~ ${to}`;
+      document.getElementById('stats-month-label').textContent=`${from}~${to}`;
       this._renderStats(exps);
     });
-    // Sort buttons (delegated, re-render)
     document.getElementById('stats-content')?.addEventListener('click',e=>{
       const sortBtn=e.target.closest('.stats-sort-btn');
-      if(sortBtn && sortBtn.dataset.sort){
-        // Save currently open cats before re-render
+      if(sortBtn&&sortBtn.dataset.sort){
         this._statsOpenCats=new Set();
         document.querySelectorAll('.stats-cat-sub-list.open').forEach(el=>{
-          const catItem=el.closest('.stats-cat-item');
-          if(catItem?.dataset.cat) this._statsOpenCats.add(catItem.dataset.cat);
+          const ci=el.closest('.stats-cat-item');if(ci?.dataset.cat)this._statsOpenCats.add(ci.dataset.cat);
         });
         this.statsSortMode=sortBtn.dataset.sort;
         const from=document.getElementById('stats-from')?.value||this._statsFromDefault();
         const to=document.getElementById('stats-to')?.value||fmt.today();
-        const exps=this.statsCustom
-          ?this.store.data.expenses.filter(ex=>ex.date>=from&&ex.date<=to)
-          :this.store.getByMonth(this.statsYear,this.statsMonth);
+        const exps=this.statsCustom?this.store.data.expenses.filter(ex=>ex.date>=from&&ex.date<=to):this.store.getByMonth(this.statsYear,this.statsMonth);
         this._renderStats(exps);
-        // Re-open previously open cats
         this._statsOpenCats.forEach(cat=>{
-          const id='scat-'+cat.replace(/\s/g,'_');
+          const id='scat-'+cat.replace(/[\s\/]/g,'_');
           const sub=document.getElementById(id);
           const hdr=sub?.closest('.stats-cat-item')?.querySelector('.stats-cat-toggle');
           if(sub){sub.classList.add('open');hdr?.classList.add('open');}
         });
         return;
       }
-      // Cat accordion toggle
       const catHeader=e.target.closest('.stats-cat-header');
       if(catHeader){
-        const catItem=catHeader.closest('.stats-cat-item');
-        const catName=catItem?.dataset.cat;
-        if(!catName) return;
-        const subList=document.getElementById('scat-'+catName.replace(/\s/g,'_'));
-        const tog=catHeader.querySelector('.stats-cat-toggle');
-        if(subList){const open=subList.classList.toggle('open');tog?.classList.toggle('open',open);}
+        const ci=catHeader.closest('.stats-cat-item');const cn=ci?.dataset.cat;if(!cn)return;
+        const sl=document.getElementById('scat-'+cn.replace(/[\s\/]/g,'_'));
+        const tg=catHeader.querySelector('.stats-cat-toggle');
+        if(sl){const op=sl.classList.toggle('open');tg?.classList.toggle('open',op);}
         return;
       }
-      // Expense row in stats → edit
-      const expRow=e.target.closest('.stats-expense-row[data-id]');
-      if(expRow) this.openExpenseModal(expRow.dataset.id);
+      const er=e.target.closest('.stats-expense-row[data-id]');
+      if(er)this.openExpenseModal(er.dataset.id);
     });
   }
 
-  // ─── INVOICE GROUP EDIT ──────────────────────────────────────
-  // Open the whole invoice as ONE editing unit (category applies to all items)
+  // ─── CATEGORIES PAGE ──────────────────────────────────────────
+  _openCategoriesPage() {
+    const cats=this.store.data.categories;
+    const overlay=document.getElementById('modal-overlay');
+    const content=document.getElementById('modal-content');
+    const backdrop=document.getElementById('modal-backdrop');
+    content.classList.remove('sheet-mode');
+    content.innerHTML=`
+      <div class="modal-topbar">
+        <button class="modal-topbar-btn" id="modal-close-btn">✕</button>
+        <div class="modal-topbar-title">分類管理</div>
+        <button class="modal-topbar-btn confirm" id="cat-add-parent-btn" title="新增大分類">＋</button>
+      </div>
+      <div class="modal-body" style="padding:8px 0;">
+        ${cats.map((cat,ci)=>`
+          <div class="cat2-section" data-ci="${ci}">
+            <div class="cat2-section-header">
+              <span class="cat2-section-icon" data-action="icon-cat" data-ci="${ci}">${this.catIcon(cat.name)}</span>
+              <span class="cat2-section-name">${cat.name}</span>
+              <div style="display:flex;gap:4px;margin-left:auto;">
+                <button class="cat-action-btn" data-action="rename-cat" data-ci="${ci}">改名</button>
+                <button class="cat-action-btn danger" data-action="del-cat" data-ci="${ci}">刪除</button>
+              </div>
+            </div>
+            <div class="cat2-sub-list">
+              ${(cat.subs||[]).map((sub,si)=>`
+                <div class="cat2-sub-item">
+                  <span class="cat2-sub-icon" data-action="icon-sub" data-ci="${ci}" data-si="${si}">${this.catIcon(sub)}</span>
+                  <span class="cat2-sub-name">${sub}</span>
+                  <div style="display:flex;gap:4px;margin-left:auto;">
+                    <button class="cat-action-btn" data-action="rename-sub" data-ci="${ci}" data-si="${si}">改名</button>
+                    <button class="cat-action-btn danger" data-action="del-sub" data-ci="${ci}" data-si="${si}">刪除</button>
+                  </div>
+                </div>`).join('')}
+              <div class="cat2-add-row">
+                <input class="cat-add-input" id="sub-input-${ci}" placeholder="新增小分類…">
+                <button class="btn-primary" data-action="add-sub" data-ci="${ci}" style="padding:5px 11px;font-size:11px;">新增</button>
+              </div>
+            </div>
+          </div>`).join('')}
+      </div>`;
+    overlay.classList.remove('hidden');backdrop.classList.add('visible');
+    requestAnimationFrame(()=>content.classList.add('slide-in'));
+    document.getElementById('modal-close-btn')?.addEventListener('click',()=>this.closeModal());
+    backdrop.addEventListener('click',()=>this.closeModal(),{once:true});
+    document.getElementById('cat-add-parent-btn')?.addEventListener('click',()=>{
+      this._promptCatName('新增大分類','',name=>{this.store.data.categories.push({name,subs:[]});this.store.save();this.closeModal();setTimeout(()=>this._openCategoriesPage(),320);this.toast('已新增','success');});
+    });
+    document.querySelectorAll('[data-action]').forEach(btn=>{
+      btn.addEventListener('click',e=>{
+        e.stopPropagation();
+        const {action,ci,si}=btn.dataset;
+        this._handleCatAction(action,+ci,si!==undefined?+si:null);
+      });
+    });
+  }
+
+  _openIconPicker(title, currentIcon, onSelect) {
+    this._openSheet(`
+      <div class="modal-handle"></div>
+      <div class="modal-header"><div class="modal-title">${title}</div><button class="modal-close" id="modal-close-btn">✕</button></div>
+      <div class="modal-body" style="padding:8px;">
+        <div class="icon-picker-grid">
+          ${ICON_LIST.map(ico=>`<button class="icon-picker-item${ico===currentIcon?' active':''}" data-ico="${ico}">${ico}</button>`).join('')}
+        </div>
+      </div>`);
+    document.querySelectorAll('.icon-picker-item').forEach(btn=>{
+      btn.addEventListener('click',()=>{onSelect(btn.dataset.ico);this.closeModal();});
+    });
+  }
+
+  _handleCatAction(action,ci,si) {
+    const cats=this.store.data.categories;
+    if(action==='rename-cat') this._promptCatName('修改大分類',cats[ci].name,name=>{cats[ci].name=name;this.store.save();this.closeModal();setTimeout(()=>this._openCategoriesPage(),320);this.toast('已更新','success');});
+    else if(action==='del-cat'){if(!confirm(`刪除「${cats[ci].name}」？`))return;cats.splice(ci,1);this.store.save();this.closeModal();setTimeout(()=>this._openCategoriesPage(),320);this.toast('已刪除','success');}
+    else if(action==='add-sub'){const inp=document.getElementById('sub-input-'+ci);const n=inp?.value.trim();if(!n){this.toast('請輸入名稱','error');return;}cats[ci].subs.push(n);this.store.save();this.closeModal();setTimeout(()=>this._openCategoriesPage(),320);this.toast('已新增','success');}
+    else if(action==='rename-sub') this._promptCatName('修改小分類',cats[ci].subs[si],name=>{cats[ci].subs[si]=name;this.store.save();this.closeModal();setTimeout(()=>this._openCategoriesPage(),320);this.toast('已更新','success');});
+    else if(action==='del-sub'){if(!confirm(`刪除「${cats[ci].subs[si]}」？`))return;cats[ci].subs.splice(si,1);this.store.save();this.closeModal();setTimeout(()=>this._openCategoriesPage(),320);this.toast('已刪除','success');}
+    else if(action==='icon-cat'){
+      const cur=this.catIcon(cats[ci].name);
+      this.closeModal();
+      setTimeout(()=>this._openIconPicker(`${cats[ci].name} 圖示`,cur,ico=>{if(!this.store.data.categoryIcons)this.store.data.categoryIcons={};this.store.data.categoryIcons[cats[ci].name]=ico;this.store.save();setTimeout(()=>this._openCategoriesPage(),320);this.toast('圖示已更新','success');}),320);
+    }
+    else if(action==='icon-sub'){
+      const sub=cats[ci].subs[si];const cur=this.catIcon(sub);
+      this.closeModal();
+      setTimeout(()=>this._openIconPicker(`${sub} 圖示`,cur,ico=>{if(!this.store.data.categoryIcons)this.store.data.categoryIcons={};this.store.data.categoryIcons[sub]=ico;this.store.save();setTimeout(()=>this._openCategoriesPage(),320);this.toast('圖示已更新','success');}),320);
+    }
+  }
+  _promptCatName(title,def,cb){const n=prompt(title,def);if(n&&n.trim())cb(n.trim());}
+
+  // ─── DRIVE SETTINGS PAGE ──────────────────────────────────────
+  _openDriveSettingsPage() {
+    const s=this.store.data.settings;
+    const lastSync=this.store.data.lastSync;
+    const overlay=document.getElementById('modal-overlay');
+    const content=document.getElementById('modal-content');
+    const backdrop=document.getElementById('modal-backdrop');
+    content.classList.remove('sheet-mode');
+    content.innerHTML=`
+      <div class="modal-topbar">
+        <button class="modal-topbar-btn" id="modal-close-btn">✕</button>
+        <div class="modal-topbar-title">Google Drive 備份</div>
+        <div style="width:36px;"></div>
+      </div>
+      <div class="modal-body" style="gap:14px;">
+        <div class="form-group">
+          <label class="form-label">OAuth Client ID</label>
+          <input class="form-input" id="s-gClientId" placeholder="xxxx.apps.googleusercontent.com" value="${s.googleClientId||''}">
+        </div>
+        <button class="btn-primary" id="save-drive-settings-btn" style="width:100%;">儲存</button>
+        ${lastSync?`<div class="last-sync-info">上次同步：${lastSync}</div>`:''}
+        <div class="drive-action-row">
+          <button class="drive-action-btn upload" id="drive-upload-btn">
+            <span class="drive-action-icon">☁️</span>
+            <span>上傳到雲端</span>
+          </button>
+          <button class="drive-action-btn download" id="drive-list-btn">
+            <span class="drive-action-icon">📥</span>
+            <span>從雲端下載</span>
+          </button>
+        </div>
+        <div id="drive-backup-list"></div>
+        <div style="font-size:10px;color:var(--text3);line-height:1.7;padding:8px;background:var(--bg3);border-radius:var(--radius-sm);">
+          📂 備份存放於 Google Drive 的 <strong>#PWA-Cost-Record</strong> 資料夾，最多保留 5 份。
+        </div>
+      </div>`;
+    overlay.classList.remove('hidden');backdrop.classList.add('visible');
+    requestAnimationFrame(()=>content.classList.add('slide-in'));
+    document.getElementById('modal-close-btn')?.addEventListener('click',()=>this.closeModal());
+    backdrop.addEventListener('click',()=>this.closeModal(),{once:true});
+    document.getElementById('save-drive-settings-btn')?.addEventListener('click',()=>{
+      const cid=document.getElementById('s-gClientId').value.trim();
+      s.googleClientId=cid;this.store.save();
+      if(cid)this.drive.init(cid).catch(()=>{});
+      this.toast('已儲存','success');
+    });
+    document.getElementById('drive-upload-btn')?.addEventListener('click',()=>this._driveUploadFromPage());
+    document.getElementById('drive-list-btn')?.addEventListener('click',()=>this._driveListModal());
+  }
+
+  async _driveUploadFromPage() {
+    const btn=document.getElementById('drive-upload-btn');
+    if(btn){btn.querySelector('span:last-child').textContent='上傳中…';btn.disabled=true;}
+    try {
+      await this.drive.init(this.store.data.settings.googleClientId);
+      const data=this.store.export();data._exportedAt=new Date().toISOString();
+      await this.drive.uploadBackup(data);
+      this.store.data.lastSync=new Date().toLocaleString('zh-TW');this.store.save();
+      this.toast('已上傳至 Google Drive','success');
+      // Update sub text
+      const sub=document.querySelector('#open-drive-settings-btn .settings-card-sub');
+      if(sub) sub.textContent=`上次同步：${this.store.data.lastSync}`;
+    } catch(err){this.toast('上傳失敗：'+err.message,'error');}
+    finally{if(btn){btn.querySelector('span:last-child').textContent='上傳到雲端';btn.disabled=false;}}
+  }
+
+  async _driveListModal() {
+    const btn=document.getElementById('drive-list-btn');
+    if(btn){btn.querySelector('span:last-child').textContent='載入中…';btn.disabled=true;}
+    const listEl=document.getElementById('drive-backup-list');
+    try {
+      await this.drive.init(this.store.data.settings.googleClientId);
+      const files=await this.drive.listBackups();
+      if(!listEl)return;
+      if(!files.length){listEl.innerHTML='<p style="font-size:11px;color:var(--text3);text-align:center;padding:16px;">尚無雲端備份</p>';return;}
+      // Show selection UI like reference image
+      // Fetch expense count for each backup
+      const backupMeta = await Promise.all(files.slice(0,5).map(async(f,i) => {
+        try {
+          const d = await this.drive.downloadBackup(f.id);
+          return { ...f, expCount: (d.expenses||[]).length, catCount: (d.categories||[]).length };
+        } catch { return { ...f, expCount: '?', catCount: '?' }; }
+      }));
+      listEl.innerHTML=`
+        <div class="drive-list-title">選擇備份版本</div>
+        <div class="drive-list-sub">最多保留 5 份備份，每次上傳自動建立新版本。</div>
+        ${backupMeta.map((f,i)=>`
+          <div class="drive-version-item" data-file-id="${f.id}">
+            <div style="flex:1">
+              <div class="drive-version-time">${new Date(f.modifiedTime).toLocaleString('zh-TW')}${i===0?'<span class="drive-version-badge" style="margin-left:6px">最新</span>':''}</div>
+              <div class="drive-version-info">支出 ${f.expCount} 筆 · 分類 ${f.catCount} 個</div>
+            </div>
+          </div>`).join('')}`;
+      listEl.querySelectorAll('.drive-version-item').forEach(item=>{
+        item.addEventListener('click',async()=>{
+          if(!confirm(`確定從此備份還原？本機資料將被覆蓋。`))return;
+          item.style.opacity='0.5';
+          try {
+            const data=await this.drive.downloadBackup(item.dataset.fileId);
+            this.store.import(data);this.toast('✅ 已從 Drive 匯入','success');
+            this.closeModal(()=>this.renderView());
+          } catch(err){this.toast('匯入失敗：'+err.message,'error');item.style.opacity='';}
+        });
+      });
+    } catch(err){this.toast('載入失敗：'+err.message,'error');}
+    finally{if(btn){btn.querySelector('span:last-child').textContent='從雲端下載';btn.disabled=false;}}
+  }
+
+  _openLocalBackupSheet() {
+    this._openSheet(`
+      <div class="modal-handle"></div>
+      <div class="modal-header"><div class="modal-title">💾 本機備份</div><button class="modal-close" id="modal-close-btn">✕</button></div>
+      <div class="modal-body" style="gap:12px;">
+        <p style="font-size:12px;color:var(--text2);line-height:1.7;">將所有記帳資料匯出為 JSON 檔案，或從備份檔案匯入。</p>
+        <button class="btn-primary" id="export-local-btn" style="width:100%;">📤 匯出 JSON 備份</button>
+        <button class="btn-secondary" id="import-local-btn" style="width:100%;">📥 匯入 JSON 備份</button>
+        <input type="file" id="import-file-input" accept=".json" style="display:none">
+      </div>`);
+    document.getElementById('export-local-btn')?.addEventListener('click',()=>this.exportLocal());
+    document.getElementById('import-local-btn')?.addEventListener('click',()=>document.getElementById('import-file-input')?.click());
+    document.getElementById('import-file-input')?.addEventListener('change',e=>this.importLocal(e));
+  }
+
+  _openGeminiSettings() {
+    const s=this.store.data.settings;
+    this._openSheet(`
+      <div class="modal-handle"></div>
+      <div class="modal-header"><div class="modal-title">🤖 Gemini AI 設定</div><button class="modal-close" id="modal-close-btn">✕</button></div>
+      <div class="modal-body" style="gap:10px;">
+        <p style="font-size:11px;color:var(--text2);line-height:1.7;">Gemini AI 用於自動產生例句等 AI 功能。請至 <strong>Google AI Studio</strong> 申請免費 API Key。</p>
+        <div class="form-group">
+          <label class="form-label">API Key</label>
+          <div class="api-key-wrap">
+            <input class="form-input" id="s-geminiKey" type="password" placeholder="Gemini API Key" value="${s.geminiApiKey||''}">
+            <button class="api-key-toggle" data-target="s-geminiKey">👁</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">模型</label>
+          <select class="form-select" id="s-geminiModel">
+            ${['gemini-1.5-flash','gemini-1.5-pro','gemini-2.0-flash','gemini-2.0-pro'].map(m=>`<option value="${m}" ${s.geminiModel===m?'selected':''}>${m}</option>`).join('')}
+          </select>
+        </div>
+        <button class="btn-primary" id="save-gemini-btn" style="width:100%;">儲存</button>
+      </div>`);
+    document.querySelectorAll('.api-key-toggle').forEach(btn=>{
+      btn.addEventListener('click',()=>{const inp=document.getElementById(btn.dataset.target);if(!inp)return;inp.type=inp.type==='password'?'text':'password';btn.textContent=inp.type==='password'?'👁':'🙈';});
+    });
+    document.getElementById('save-gemini-btn')?.addEventListener('click',()=>{
+      s.geminiApiKey=document.getElementById('s-geminiKey').value.trim();
+      s.geminiModel=document.getElementById('s-geminiModel').value;
+      this.store.save();this.toast('已儲存','success');this.closeModal(()=>this.renderView());
+    });
+  }
+
+  // ─── INVOICE GROUP EDIT ───────────────────────────────────────
   _openInvoiceGroupSheet(invoiceNo) {
     const items=this.store.data.expenses.filter(e=>e.invoiceNo===invoiceNo);
-    if(!items.length) return;
-    const total=items.reduce((s,i)=>s+Number(i.amount||0),0);
+    if(!items.length)return;
+    const total=items.reduce((s,i)=>s+this._displayAmt(i),0);
     const store=items[0]?.store||'電子發票';
     const date=items[0]?.date||fmt.today();
-    const combinedDesc=items.map(it=>`${it.description||'(未命名)'}  ${this._formatExpenseAmount(it)}`).join('\n');
+    const combinedDesc=items.map(it=>`${it.description||'(未命名)'}  ${this.money(this._displayAmt(it))}`).join('\n');
     const firstCat1=items.find(i=>i.category1)?.category1||'';
     const firstCat2=items.find(i=>i.category2)?.category2||'';
-
     const cats=this.store.data.categories;
     const selectedCat=cats.find(c=>c.name===firstCat1);
     const cat1Html=cats.map(cat=>`
       <button class="edit-cat-btn${firstCat1===cat.name?' selected':''}" data-cat1="${cat.name}" data-cat2="">
-        <div class="edit-cat-circle">${cat.icon||'📁'}</div>
+        <div class="edit-cat-circle">${this.catIcon(cat.name)}</div>
         <div class="edit-cat-label">${cat.name}</div>
       </button>`).join('');
     const cat2Html=selectedCat?(selectedCat.subs||[]).map(sub=>`
-      <button class="edit-cat-btn${firstCat2===sub.name?' selected':''}" data-cat1="${selectedCat.name}" data-cat2="${sub.name}">
-        <div class="edit-cat-circle">${sub.icon||getCatIcon(sub.name)}</div>
-        <div class="edit-cat-label">${sub.name}</div>
+      <button class="edit-cat-btn${firstCat2===sub?' selected':''}" data-cat1="${selectedCat.name}" data-cat2="${sub}">
+        <div class="edit-cat-circle">${this.catIcon(sub)}</div>
+        <div class="edit-cat-label">${sub}</div>
       </button>`).join(''):'';
-
     const overlay=document.getElementById('modal-overlay');
     const content=document.getElementById('modal-content');
     const backdrop=document.getElementById('modal-backdrop');
@@ -1868,80 +1566,50 @@ class App {
             <div class="edit-category-row" id="grp-cat2-row">${cat2Html}</div>
           </div>
         </div>
-
-        <div class="edit-amount-display" style="pointer-events:none;">
-          <span class="edit-amount-currency">${items[0]?.currency||'TWD'}</span>
-          <input class="edit-amount-input" type="number" id="grp-amount" value="${total}" readonly style="color:var(--text2)">
-        </div>
-
         <div class="edit-field-grid">
-          <div class="edit-field"><div class="edit-field-label">日期</div>
-            <div class="edit-field-value" style="color:var(--text3)">${fmt.date(date)}</div></div>
-          <div class="edit-field"><div class="edit-field-label">消費店家</div>
-            <div class="edit-field-value" style="color:var(--text3)">${store}</div></div>
-          <div class="edit-field edit-field-full"><div class="edit-field-label">發票號碼</div>
-            <div class="edit-field-value" style="color:var(--text3)">${invoiceNo}</div></div>
+          <div class="edit-field"><div class="edit-field-label">日期</div><div class="edit-field-value" style="color:var(--text3)">${fmt.date(date)}</div></div>
+          <div class="edit-field"><div class="edit-field-label">消費店家</div><div class="edit-field-value" style="color:var(--text3)">${store}</div></div>
+          <div class="edit-field edit-field-full"><div class="edit-field-label">發票號碼</div><div class="edit-field-value" style="color:var(--text3)">${invoiceNo}</div></div>
         </div>
-
-        <div class="edit-notes-area" style="pointer-events:none;">
-          <div class="edit-notes-label">消費項目明細（共 ${items.length} 項，${this._formatGroupAmount(items)}）</div>
-          <textarea class="edit-notes-input" id="grp-desc" readonly tabindex="-1" style="color:var(--text2);min-height:80px;max-height:160px;overflow-y:auto;pointer-events:none;" aria-label="發票明細">${combinedDesc}</textarea>
+        <div class="edit-notes-area">
+          <div class="edit-notes-label">消費項目明細（${items.length} 項，${this.money(total)}）</div>
+          <textarea class="edit-notes-input" readonly tabindex="-1" style="color:var(--text2);min-height:80px;max-height:160px;overflow-y:auto;pointer-events:none;">${combinedDesc}</textarea>
         </div>
       </div>`;
-
-    overlay.classList.remove('hidden');
-    backdrop.classList.add('visible');
+    overlay.classList.remove('hidden');backdrop.classList.add('visible');
     requestAnimationFrame(()=>content.classList.add('slide-in'));
-
     document.querySelectorAll('#grp-cat1-row .edit-cat-btn').forEach(btn=>{
       btn.addEventListener('click',()=>{
-        document.querySelectorAll('#grp-cat1-row .edit-cat-btn').forEach(b=>b.classList.remove('selected'));
-        btn.classList.add('selected');
-        const cat1=btn.dataset.cat1;
-        const cat=cats.find(c=>c.name===cat1);
-        const area=document.getElementById('grp-cat2-area');
-        const row=document.getElementById('grp-cat2-row');
+        document.querySelectorAll('#grp-cat1-row .edit-cat-btn').forEach(b=>b.classList.remove('selected'));btn.classList.add('selected');
+        const cat=cats.find(c=>c.name===btn.dataset.cat1);
+        const area=document.getElementById('grp-cat2-area');const row=document.getElementById('grp-cat2-row');
         if(cat&&cat.subs?.length){
-          row.innerHTML=cat.subs.map(sub=>`
-            <button class="edit-cat-btn" data-cat1="${cat1}" data-cat2="${sub.name}">
-              <div class="edit-cat-circle">${sub.icon||getCatIcon(sub.name)}</div>
-              <div class="edit-cat-label">${sub.name}</div>
-            </button>`).join('');
+          row.innerHTML=cat.subs.map(sub=>`<button class="edit-cat-btn" data-cat1="${btn.dataset.cat1}" data-cat2="${sub}"><div class="edit-cat-circle">${this.catIcon(sub)}</div><div class="edit-cat-label">${sub}</div></button>`).join('');
           area.classList.remove('hidden');
-          row.querySelectorAll('.edit-cat-btn').forEach(b=>{
-            b.addEventListener('click',()=>{row.querySelectorAll('.edit-cat-btn').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');});
-          });
-        } else { area.classList.add('hidden'); }
+          row.querySelectorAll('.edit-cat-btn').forEach(b=>{b.addEventListener('click',()=>{row.querySelectorAll('.edit-cat-btn').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');});});
+        } else {area.classList.add('hidden');}
       });
     });
-    document.querySelectorAll('#grp-cat2-row .edit-cat-btn').forEach(btn=>{
-      btn.addEventListener('click',()=>{document.querySelectorAll('#grp-cat2-row .edit-cat-btn').forEach(b=>b.classList.remove('selected'));btn.classList.add('selected');});
-    });
-
+    document.querySelectorAll('#grp-cat2-row .edit-cat-btn').forEach(btn=>{btn.addEventListener('click',()=>{document.querySelectorAll('#grp-cat2-row .edit-cat-btn').forEach(b=>b.classList.remove('selected'));btn.classList.add('selected');});});
     document.getElementById('modal-close-btn')?.addEventListener('click',()=>this.closeModal());
     backdrop.addEventListener('click',()=>this.closeModal(),{once:true});
-
     document.getElementById('grp-save-btn')?.addEventListener('click',()=>{
-      const cat1Btn=document.querySelector('#grp-cat1-row .edit-cat-btn.selected');
-      const cat2Btn=document.querySelector('#grp-cat2-row .edit-cat-btn.selected');
-      const cat1=cat1Btn?.dataset.cat1||'';
-      const cat2=cat2Btn?.dataset.cat2||'';
+      const cat1=document.querySelector('#grp-cat1-row .edit-cat-btn.selected')?.dataset.cat1||'';
+      const cat2=document.querySelector('#grp-cat2-row .edit-cat-btn.selected')?.dataset.cat2||'';
       if(!cat1){this.toast('請選擇大分類','error');return;}
-      items.forEach(it=>{
-        this.store.updateExpense(it.id,{category1:cat1,category2:cat2,status:'categorized'});
-      });
+      items.forEach(it=>this.store.updateExpense(it.id,{category1:cat1,category2:cat2,status:'categorized'}));
       this.toast(`✅ 已更新 ${items.length} 筆分類`,'success');
       this.closeModal(()=>this.renderView());
     });
   }
 
+  // ─── STORE MAPPING ────────────────────────────────────────────
   _openStoreMappingPage() {
-    this._smSortMode = this._smSortMode || 'name'; // 'name'|'time'
-    const rules = this.store.data.storeMapping || [];
-    const sorted = [...rules.entries()].map(([i,r])=>({...r,_idx:i}));
+    this._smSortMode=this._smSortMode||'name';
+    const rules=this.store.data.storeMapping||[];
+    const sorted=[...rules.entries()].map(([i,r])=>({...r,_idx:i}));
     if(this._smSortMode==='name') sorted.sort((a,b)=>a.store.localeCompare(b.store,'zh-TW'));
-    else sorted.sort((a,b)=>(b._idx-a._idx)); // time: newest first
-
+    else sorted.sort((a,b)=>b._idx-a._idx);
     const overlay=document.getElementById('modal-overlay');
     const content=document.getElementById('modal-content');
     const backdrop=document.getElementById('modal-backdrop');
@@ -1950,15 +1618,15 @@ class App {
       <div class="modal-topbar">
         <button class="modal-topbar-btn" id="modal-close-btn">✕</button>
         <div class="modal-topbar-title">店家自動分類</div>
-        <button class="modal-topbar-btn confirm" id="sm-add-new-btn" title="新增">＋</button>
+        <button class="modal-topbar-btn confirm" id="sm-add-new-btn">＋</button>
       </div>
       <div style="display:flex;align-items:center;gap:6px;padding:8px 14px 6px;border-bottom:1px solid var(--border);flex-shrink:0;">
         <span style="font-size:10px;color:var(--text3);">排序：</span>
         <button class="stats-sort-btn${this._smSortMode==='name'?' active':''}" data-sm-sort="name">名稱</button>
         <button class="stats-sort-btn${this._smSortMode==='time'?' active':''}" data-sm-sort="time">新增時間</button>
-        <span style="margin-left:auto;font-size:10px;color:var(--text3);">${rules.length} 條規則</span>
+        <span style="margin-left:auto;font-size:10px;color:var(--text3);">${rules.length} 條</span>
       </div>
-      <div style="flex:1;overflow-y:auto;min-height:0;padding:6px 0;" id="sm-list-wrap">
+      <div style="flex:1;overflow-y:auto;min-height:0;">
         ${sorted.length?sorted.map(r=>`
           <div class="sm-rule-row" data-ridx="${r._idx}">
             <div class="sm-rule-store">${r.store}</div>
@@ -1968,89 +1636,58 @@ class App {
               <button class="sm-rule-btn del" data-ridx="${r._idx}">🗑</button>
             </div>
           </div>`).join('')
-          :`<div class="empty-state"><div class="icon">🏪</div><p>尚無規則，點右上角＋新增</p></div>`}
+          :`<div class="empty-state"><div class="icon">🏪</div><p>尚無規則</p></div>`}
       </div>`;
-    overlay.classList.remove('hidden');
-    backdrop.classList.add('visible');
+    overlay.classList.remove('hidden');backdrop.classList.add('visible');
     requestAnimationFrame(()=>content.classList.add('slide-in'));
     document.getElementById('modal-close-btn')?.addEventListener('click',()=>this.closeModal());
     backdrop.addEventListener('click',()=>this.closeModal(),{once:true});
     document.getElementById('sm-add-new-btn')?.addEventListener('click',()=>{this.closeModal();setTimeout(()=>this._openStoreMappingModal(null),320);});
-    document.querySelectorAll('[data-sm-sort]').forEach(btn=>{
-      btn.addEventListener('click',()=>{this._smSortMode=btn.dataset.smSort;this.closeModal();setTimeout(()=>this._openStoreMappingPage(),320);});
-    });
-    document.querySelectorAll('.sm-rule-btn.edit').forEach(btn=>{
-      btn.addEventListener('click',e=>{e.stopPropagation();const idx=+btn.dataset.ridx;this.closeModal();setTimeout(()=>this._openStoreMappingModal(idx),320);});
-    });
+    document.querySelectorAll('[data-sm-sort]').forEach(btn=>{btn.addEventListener('click',()=>{this._smSortMode=btn.dataset.smSort;this.closeModal();setTimeout(()=>this._openStoreMappingPage(),320);});});
+    document.querySelectorAll('.sm-rule-btn.edit').forEach(btn=>{btn.addEventListener('click',e=>{e.stopPropagation();const idx=+btn.dataset.ridx;this.closeModal();setTimeout(()=>this._openStoreMappingModal(idx),320);});});
     document.querySelectorAll('.sm-rule-btn.del').forEach(btn=>{
-      btn.addEventListener('click',e=>{
-        e.stopPropagation();
-        const idx=+btn.dataset.ridx;
-        if(!confirm(`刪除「${this.store.data.storeMapping[idx]?.store}」規則？`)) return;
-        this.store.data.storeMapping.splice(idx,1);
-        this.store.save();this.toast('已刪除','success');
-        this.closeModal();setTimeout(()=>this._openStoreMappingPage(),320);
-      });
+      btn.addEventListener('click',e=>{e.stopPropagation();const idx=+btn.dataset.ridx;if(!confirm(`刪除「${this.store.data.storeMapping[idx]?.store}」規則？`))return;this.store.data.storeMapping.splice(idx,1);this.store.save();this.toast('已刪除','success');this.closeModal();setTimeout(()=>this._openStoreMappingPage(),320);});
     });
   }
 
-  // ─── STORE MAPPING MODAL ──────────────────────────────────────
   _openStoreMappingModal(existingIdx) {
     const cats=this.store.data.categories;
     const catOptions=cats.map(c=>`<option value="${c.name}">${c.name}</option>`).join('');
     const existing=existingIdx!==null?this.store.data.storeMapping[existingIdx]:null;
     this._openSheet(`
       <div class="modal-handle"></div>
-      <div class="modal-header">
-        <div class="modal-title">🏪 店家自動分類規則</div>
-        <button class="modal-close" id="modal-close-btn">✕</button>
-      </div>
+      <div class="modal-header"><div class="modal-title">🏪 店家分類規則</div><button class="modal-close" id="modal-close-btn">✕</button></div>
       <div class="modal-body" style="gap:10px;">
-        <p style="font-size:11px;color:var(--text2);line-height:1.7;">
-          設定後，當匯入發票資料時，符合店家名稱（支援部分匹配）的消費將自動套用對應分類。
-        </p>
-        <div class="form-group">
-          <label class="form-label">店家名稱（關鍵字）</label>
-          <input class="form-input" id="sm-store" placeholder="例如：全聯、麥當勞、IKEA" value="${existing?.store||''}">
-        </div>
+        <div class="form-group"><label class="form-label">店家名稱（關鍵字）</label>
+          <input class="form-input" id="sm-store" placeholder="例：全聯、麥當勞" value="${existing?.store||''}"></div>
         <div class="form-row-2">
-          <div class="form-group">
-            <label class="form-label">大分類</label>
-            <select class="form-select" id="sm-cat1">
-              <option value="">-- 選擇 --</option>${catOptions}
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">小分類</label>
-            <select class="form-select" id="sm-cat2" disabled>
-              <option value="">-- 選擇 --</option>
-            </select>
-          </div>
+          <div class="form-group"><label class="form-label">大分類</label>
+            <select class="form-select" id="sm-cat1"><option value="">-- 選擇 --</option>${catOptions}</select></div>
+          <div class="form-group"><label class="form-label">小分類</label>
+            <select class="form-select" id="sm-cat2" disabled><option value="">-- 選擇 --</option></select></div>
         </div>
       </div>
       <div class="modal-footer">
         <button class="btn-secondary" id="modal-cancel-btn">取消</button>
-        <button class="btn-primary" id="sm-save-btn">儲存規則</button>
+        <button class="btn-primary" id="sm-save-btn">儲存</button>
       </div>`);
-    const sel1=document.getElementById('sm-cat1');
-    const sel2=document.getElementById('sm-cat2');
+    const sel1=document.getElementById('sm-cat1'),sel2=document.getElementById('sm-cat2');
     if(existing){sel1.value=existing.cat1;this._populateSelect2(sel1.value,sel2,existing.cat2);}
     sel1.addEventListener('change',()=>this._populateSelect2(sel1.value,sel2,''));
     document.getElementById('sm-save-btn')?.addEventListener('click',()=>{
-      const store=document.getElementById('sm-store').value.trim();
-      const cat1=sel1.value;const cat2=sel2.value;
-      if(!store||!cat1){this.toast('請填寫店家名稱與大分類','error');return;}
+      const store=document.getElementById('sm-store').value.trim();const cat1=sel1.value;const cat2=sel2.value;
+      if(!store||!cat1){this.toast('請填寫店家與分類','error');return;}
       const rule={store,cat1,cat2};
-      if(!this.store.data.storeMapping) this.store.data.storeMapping=[];
-      if(existingIdx!==null) this.store.data.storeMapping[existingIdx]=rule;
+      if(!this.store.data.storeMapping)this.store.data.storeMapping=[];
+      if(existingIdx!==null)this.store.data.storeMapping[existingIdx]=rule;
       else this.store.data.storeMapping.push(rule);
-      this.store.save();this.toast('規則已儲存','success');this.closeModal(()=>this.renderView());
+      this.store.save();this.toast('已儲存','success');this.closeModal(()=>this.renderView());
     });
   }
 
   _populateSelect2(cat1,sel2,selectedCat2) {
-    const subs=this._getSubOptions(cat1);
-    sel2.innerHTML='<option value="">-- 選擇 --</option>'+subs.map(s=>`<option value="${s.name}" ${s.name===selectedCat2?'selected':''}>${s.name}</option>`).join('');
+    const subs=this.store.data.categories.find(c=>c.name===cat1)?.subs||[];
+    sel2.innerHTML='<option value="">-- 選擇 --</option>'+subs.map(s=>`<option value="${s}" ${s===selectedCat2?'selected':''}>${s}</option>`).join('');
     sel2.disabled=!subs.length;
   }
 
@@ -2061,20 +1698,18 @@ class App {
     const cats=this.store.data.categories;
     const isEdit=!!expense;
     const e=expense||{date:this.selected,description:'',store:'',amount:'',currency:'TWD',category1:'',category2:'',status:'categorized',source:'manual'};
-
-    const cat1CirclesHtml=cats.map(cat=>`
+    const eCur=e.currency||'TWD';
+    const cat1Html=cats.map(cat=>`
       <button class="edit-cat-btn${e.category1===cat.name?' selected':''}" data-cat1="${cat.name}" data-cat2="">
-        <div class="edit-cat-circle">${cat.icon||'📁'}</div>
+        <div class="edit-cat-circle">${this.catIcon(cat.name)}</div>
         <div class="edit-cat-label">${cat.name}</div>
       </button>`).join('');
-
     const selectedCat=cats.find(c=>c.name===e.category1);
-    const cat2CirclesHtml=selectedCat?(selectedCat.subs||[]).map(sub=>`
-      <button class="edit-cat-btn${e.category2===sub.name?' selected':''}" data-cat1="${selectedCat.name}" data-cat2="${sub.name}">
-        <div class="edit-cat-circle">${sub.icon||getCatIcon(sub.name)}</div>
-        <div class="edit-cat-label">${sub.name}</div>
+    const cat2Html=selectedCat?(selectedCat.subs||[]).map(sub=>`
+      <button class="edit-cat-btn${e.category2===sub?' selected':''}" data-cat1="${selectedCat.name}" data-cat2="${sub}">
+        <div class="edit-cat-circle">${this.catIcon(sub)}</div>
+        <div class="edit-cat-label">${sub}</div>
       </button>`).join(''):'';
-
     const invItems=(isEdit&&e.invoiceNo)?this.store.getInvoiceItems(e.invoiceNo):[];
     const invHtml=invItems.length>1?`
       <div class="inv-items-section">
@@ -2082,11 +1717,11 @@ class App {
         ${invItems.map(it=>`
           <div class="inv-item-row ${it.id===e.id?'inv-item-current':''}" ${it.id!==e.id?`data-inv-id="${it.id}"`:''}>
             <span class="inv-item-name">${it.description||'(未命名)'}</span>
-            <span class="inv-item-amt">${this._formatExpenseAmount(it)}</span>
+            <span class="inv-item-amt">${this.money(this._displayAmt(it))}</span>
             ${it.id===e.id?`<span class="inv-item-current-badge">本筆</span>`:`<span class="inv-item-cat${it.status==='pending'?' pending':''}">${it.status==='pending'?'待分類':(it.category1||'未分類')}</span>`}
           </div>`).join('')}
       </div>`:'';
-
+    const currencyOptions=Object.entries(CURRENCIES).map(([code,info])=>`<option value="${code}" ${eCur===code?'selected':''}>${code}</option>`).join('');
     const overlay=document.getElementById('modal-overlay');
     const content=document.getElementById('modal-content');
     const backdrop=document.getElementById('modal-backdrop');
@@ -2100,20 +1735,16 @@ class App {
       <div class="modal-body">
         <div class="cat-level-wrap">
           <div class="cat-level-label">大分類</div>
-          <div class="edit-category-row" id="cat1-row">${cat1CirclesHtml}</div>
+          <div class="edit-category-row" id="cat1-row">${cat1Html}</div>
           <div class="cat-sub-area${selectedCat?'':' hidden'}" id="cat2-area">
             <div class="cat-level-label" style="padding:6px 8px 2px">小分類</div>
-            <div class="edit-category-row" id="cat2-row">${cat2CirclesHtml}</div>
+            <div class="edit-category-row" id="cat2-row">${cat2Html}</div>
           </div>
         </div>
-
-        <div class="edit-amount-display has-currency-select">
-          <select class="edit-currency-select" id="f-currency">${this._buildCurrencyOptions(e.currency||'TWD')}</select>
-          <input class="edit-amount-input" type="number" id="f-amount" placeholder="0"
-            value="${e.amount||''}" inputmode="decimal" min="0">
+        <div class="edit-amount-display">
+          <select class="edit-amount-currency-select" id="f-currency">${currencyOptions}</select>
+          <input class="edit-amount-input" type="number" id="f-amount" placeholder="0" value="${e.amount||''}" inputmode="decimal" min="0">
         </div>
-        <div class="edit-amount-hint">切換幣值時，會依日期匯率自動換算。</div>
-
         <div class="edit-field-grid">
           <div class="edit-field"><div class="edit-field-label">日期</div>
             <input class="edit-field-value" type="date" id="f-date" value="${e.date||this.selected}"></div>
@@ -2121,156 +1752,77 @@ class App {
             <input class="edit-field-value" id="f-store" placeholder="店家名稱" value="${e.store||''}"></div>
           ${isEdit&&e.invoiceNo?`<div class="edit-field edit-field-full"><div class="edit-field-label">發票號碼</div><div class="edit-field-value" style="color:var(--text3)">${e.invoiceNo}</div></div>`:''}
         </div>
-
         ${invHtml}
-
         <div class="edit-notes-area">
           <div class="edit-notes-label">消費項目說明</div>
           <textarea class="edit-notes-input" id="f-desc" placeholder="請輸入消費項目說明" style="max-height:120px;overflow-y:auto;">${e.description||''}</textarea>
         </div>
-
         ${isEdit?`<button class="edit-delete-btn" id="modal-delete-btn">🗑 刪除這筆消費</button>`:''}
       </div>`;
-
-    overlay.classList.remove('hidden');
-    backdrop.classList.add('visible');
+    overlay.classList.remove('hidden');backdrop.classList.add('visible');
     requestAnimationFrame(()=>content.classList.add('slide-in'));
-
-    const amountInput=document.getElementById('f-amount');
-    const currencySelect=document.getElementById('f-currency');
-    const dateInput=document.getElementById('f-date');
-
-    const bindCat2Buttons=(row)=>{
-      row.querySelectorAll('.edit-cat-btn').forEach(b=>{
-        b.addEventListener('click',()=>{
-          row.querySelectorAll('.edit-cat-btn').forEach(x=>x.classList.remove('selected'));
-          b.classList.add('selected');
-        });
-      });
-    };
-
-    this._attachModalSwipeBack(content, ()=>{
-      const origAmt=String(e.amount||'');
-      const origDesc=e.description||'';
-      const origStore=e.store||'';
-      const origDate=e.date||this.selected;
-      const origCurrency=e.currency||'TWD';
-      const curAmt=amountInput?.value||'';
-      const curDesc=document.getElementById('f-desc')?.value.trim()||'';
-      const curStore=document.getElementById('f-store')?.value.trim()||'';
-      const curDate=dateInput?.value||'';
-      const curCurrency=currencySelect?.value||'TWD';
-      const cat1=document.querySelector('#cat1-row .edit-cat-btn.selected')?.dataset.cat1||'';
-      const cat2=document.querySelector('#cat2-row .edit-cat-btn.selected')?.dataset.cat2||'';
-      const isDirty=curAmt!==origAmt || curDesc!==origDesc || curStore!==origStore || curDate!==origDate || curCurrency!==origCurrency || cat1!==(e.category1||'') || cat2!==(e.category2||'');
-      if(isDirty){
-        const choice = confirm('是否要儲存已編輯的內容？\n確定 → 儲存並關閉\n取消 → 不儲存直接關閉');
-        if(choice){ this._saveExpense(e, isEdit); return; }
-      }
+    this._attachModalSwipeBack(content,()=>{
+      const isDirty=document.getElementById('f-amount')?.value!==String(e.amount||'')
+        ||document.getElementById('f-desc')?.value.trim()!==(e.description||'')
+        ||document.getElementById('f-store')?.value.trim()!==(e.store||'');
+      if(isDirty){const ch=confirm('是否要儲存已編輯的內容？\n確定 → 儲存並關閉\n取消 → 不儲存直接關閉');if(ch){this._saveExpense(e,isEdit);return;}}
       this.closeModal();
     });
-
     document.querySelectorAll('#cat1-row .edit-cat-btn').forEach(btn=>{
       btn.addEventListener('click',()=>{
-        document.querySelectorAll('#cat1-row .edit-cat-btn').forEach(b=>b.classList.remove('selected'));
-        btn.classList.add('selected');
-        const cat1=btn.dataset.cat1;
-        const cat=cats.find(c=>c.name===cat1);
-        const area=document.getElementById('cat2-area');
-        const row=document.getElementById('cat2-row');
+        document.querySelectorAll('#cat1-row .edit-cat-btn').forEach(b=>b.classList.remove('selected'));btn.classList.add('selected');
+        const cat=cats.find(c=>c.name===btn.dataset.cat1);
+        const area=document.getElementById('cat2-area');const row=document.getElementById('cat2-row');
         if(cat&&cat.subs?.length){
-          row.innerHTML=cat.subs.map(sub=>`
-            <button class="edit-cat-btn" data-cat1="${cat1}" data-cat2="${sub.name}">
-              <div class="edit-cat-circle">${sub.icon||getCatIcon(sub.name)}</div>
-              <div class="edit-cat-label">${sub.name}</div>
-            </button>`).join('');
+          row.innerHTML=cat.subs.map(sub=>`<button class="edit-cat-btn" data-cat1="${btn.dataset.cat1}" data-cat2="${sub}"><div class="edit-cat-circle">${this.catIcon(sub)}</div><div class="edit-cat-label">${sub}</div></button>`).join('');
           area.classList.remove('hidden');
-          bindCat2Buttons(row);
-        } else {
-          area.classList.add('hidden');
-          row.innerHTML='';
-        }
+          row.querySelectorAll('.edit-cat-btn').forEach(b=>{b.addEventListener('click',()=>{row.querySelectorAll('.edit-cat-btn').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');});});
+        } else {area.classList.add('hidden');}
       });
     });
-    bindCat2Buttons(document.getElementById('cat2-row'));
-
-    currencySelect?.addEventListener('change',async()=>{
-      const from=currencySelect.dataset.prevCurrency||e.currency||'TWD';
-      const to=currencySelect.value;
-      const amount=Number(amountInput.value||0);
-      if(!amount || from===to){currencySelect.dataset.prevCurrency=to;return;}
-      currencySelect.disabled=true; amountInput.disabled=true;
-      try {
-        const converted=await this.fx.convert(amount, from, to, dateInput?.value||fmt.today());
-        amountInput.value=this._roundCurrencyValue(converted,to);
-        currencySelect.dataset.prevCurrency=to;
-        this.toast(`已依 ${fmt.date(dateInput?.value||fmt.today())} 匯率換算`, 'success');
-      } catch(err) {
-        currencySelect.value=from;
-        this.toast('換算失敗：'+err.message,'error');
-      } finally {
-        currencySelect.disabled=false; amountInput.disabled=false;
-      }
-    });
-    currencySelect.dataset.prevCurrency=e.currency||'TWD';
-
-    document.querySelectorAll('.inv-item-row[data-inv-id]').forEach(row=>{
-      row.addEventListener('click',()=>{this.closeModal(()=>this.openExpenseModal(row.dataset.invId));});
-    });
-
+    document.querySelectorAll('#cat2-row .edit-cat-btn').forEach(btn=>{btn.addEventListener('click',()=>{document.querySelectorAll('#cat2-row .edit-cat-btn').forEach(b=>b.classList.remove('selected'));btn.classList.add('selected');});});
+    document.querySelectorAll('.inv-item-row[data-inv-id]').forEach(row=>{row.addEventListener('click',()=>{this.closeModal(()=>this.openExpenseModal(row.dataset.invId));});});
     document.getElementById('modal-close-btn')?.addEventListener('click',()=>this.closeModal());
     backdrop.addEventListener('click',()=>this.closeModal(),{once:true});
     document.getElementById('modal-save-btn')?.addEventListener('click',()=>this._saveExpense(e,isEdit));
     document.getElementById('modal-delete-btn')?.addEventListener('click',()=>{
-      if(!confirm('確定刪除這筆消費？'))return;
-      this.store.deleteExpense(this._editId);
-      this.toast('已刪除','success');
-      this.closeModal(()=>this.renderView());
+      if(!confirm('確定刪除？'))return;
+      this.store.deleteExpense(this._editId);this.toast('已刪除','success');this.closeModal(()=>this.renderView());
     });
   }
 
-  async _saveExpense(e,isEdit) {
-    const date=document.getElementById('f-date')?.value||this.selected;
-    const amount=Number(document.getElementById('f-amount')?.value||0);
+  _saveExpense(e,isEdit) {
+    const date=document.getElementById('f-date')?.value;
+    const amount=parseFloat(document.getElementById('f-amount')?.value);
+    const desc=document.getElementById('f-desc')?.value.trim();
+    const store=document.getElementById('f-store')?.value.trim();
     const currency=document.getElementById('f-currency')?.value||'TWD';
-    const desc=document.getElementById('f-desc')?.value.trim()||'';
-    const store=document.getElementById('f-store')?.value.trim()||'';
-    const cat1Btn=document.querySelector('#cat1-row .edit-cat-btn.selected');
-    const cat2Btn=document.querySelector('#cat2-row .edit-cat-btn.selected');
-    const cat1=cat1Btn?.dataset.cat1||'';
-    const cat2=cat2Btn?.dataset.cat2||'';
+    const cat1=document.querySelector('#cat1-row .edit-cat-btn.selected')?.dataset.cat1||'';
+    const cat2=document.querySelector('#cat2-row .edit-cat-btn.selected')?.dataset.cat2||'';
+    if(!date){this.toast('請選擇日期','error');return;}
     if(isNaN(amount)||amount<=0){this.toast('請輸入有效金額','error');return;}
-
-    const saveBtn=document.getElementById('modal-save-btn');
-    if(saveBtn){saveBtn.disabled=true;saveBtn.textContent='…';}
-    try {
-      const amountTwd=this._roundCurrencyValue(await this.fx.convert(amount,currency,'TWD',date),'TWD');
-      const data={date,amount,amountTwd,currency,description:desc,store,category1:cat1,category2:cat2,
-        status:cat1?'categorized':'pending',source:e.source||'manual',invoiceNo:e.invoiceNo||''};
-      if(isEdit){this.store.updateExpense(this._editId,data);this.toast('已更新','success');}
-      else{this.store.addExpense(data);this.toast('已新增','success');this.selected=date;
-        const d=new Date(date);this.calendarYear=d.getFullYear();this.calendarMonth=d.getMonth()+1;}
-      this.closeModal(()=>this.renderView());
-    } catch(err) {
-      this.toast('儲存失敗：'+err.message,'error');
-    } finally {
-      if(saveBtn){saveBtn.disabled=false;saveBtn.textContent='✓';}
-    }
+    if(!desc){this.toast('請輸入消費項目','error');return;}
+    const data={date,amount,description:desc,store,currency,category1:cat1,category2:cat2,
+      status:cat1?'categorized':'pending',source:e.source||'manual',invoiceNo:e.invoiceNo||''};
+    if(isEdit){this.store.updateExpense(this._editId,data);this.toast('已更新','success');}
+    else{this.store.addExpense(data);this.toast('已新增','success');this.selected=date;const d=new Date(date);this.calendarYear=d.getFullYear();this.calendarMonth=d.getMonth()+1;}
+    this.closeModal(()=>this.renderView());
   }
 
   closeModal(cb) {
     const content=document.getElementById('modal-content');
     const overlay=document.getElementById('modal-overlay');
     const backdrop=document.getElementById('modal-backdrop');
-    content.classList.remove('slide-in');
-    backdrop.classList.remove('visible');
-    setTimeout(()=>{
-      overlay.classList.add('hidden');
-      content.innerHTML='';
-      content.classList.remove('sheet-mode');
-      this._editId=null;
-      if(cb) cb();
-    },300);
+    content.classList.remove('slide-in');backdrop.classList.remove('visible');
+    setTimeout(()=>{overlay.classList.add('hidden');content.innerHTML='';content.classList.remove('sheet-mode');this._editId=null;if(cb)cb();},300);
+  }
+
+  _attachModalSwipeBack(el,onClose) {
+    if(!el)return;
+    let sx=null,sy=null,dx=0;
+    el.addEventListener('touchstart',e=>{if(e.touches[0].clientX>40)return;sx=e.touches[0].clientX;sy=e.touches[0].clientY;dx=0;},{passive:true});
+    el.addEventListener('touchmove',e=>{if(sx===null)return;dx=e.touches[0].clientX-sx;const dy=e.touches[0].clientY-sy;if(Math.abs(dx)>Math.abs(dy)&&dx>0){const p=Math.min(dx/200,1);el.style.transform=`translateX(${Math.min(dx,200)}px)`;el.style.opacity=String(1-p*.3);}},{passive:true});
+    el.addEventListener('touchend',e=>{if(sx===null)return;el.style.transform='';el.style.opacity='';if(dx>80)onClose();sx=null;sy=null;dx=0;},{passive:true});
   }
 
   // ─── PENDING MODAL ────────────────────────────────────────────
@@ -2282,16 +1834,13 @@ class App {
     const catOptions=cats.map(c=>`<option value="${c.name}">${c.name}</option>`).join('');
     this._openSheet(`
       <div class="modal-handle"></div>
-      <div class="modal-header">
-        <div class="modal-title">待分類 (${pending.length} 筆)</div>
-        <button class="modal-close" id="modal-close-btn">✕</button>
-      </div>
+      <div class="modal-header"><div class="modal-title">待分類 (${pending.length} 筆)</div><button class="modal-close" id="modal-close-btn">✕</button></div>
       <div class="modal-body-scroll">
-        <div style="font-size:10px;color:var(--text3);margin-bottom:7px;">為每筆選擇分類後，點「儲存所有分類」一次完成</div>
-        <div id="pending-list" style="display:flex;flex-direction:column;gap:8px;">
+        <div style="font-size:10px;color:var(--text3);margin-bottom:7px;">為每筆選擇分類後，點「儲存所有分類」</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
           ${pending.map(e=>`
             <div class="pending-row" data-pid="${e.id}">
-              <div class="pending-row-top"><div class="pending-desc">${e.description||'(未命名)'}</div><div class="pending-amt">${this._formatExpenseAmount(e)}</div></div>
+              <div class="pending-row-top"><div class="pending-desc">${e.description||'(未命名)'}</div><div class="pending-amt">${this.money(this._displayAmt(e))}</div></div>
               <div class="pending-row-meta"><span class="pending-date">${fmt.date(e.date)}</span>${e.store?`<span class="pending-store">🏪 ${e.store}</span>`:''}</div>
               <div class="pending-row-selects">
                 <select class="form-select pending-cat1" data-pid="${e.id}"><option value="">大分類</option>${catOptions}</select>
@@ -2306,10 +1855,9 @@ class App {
       </div>`);
     document.querySelectorAll('.pending-cat1').forEach(sel=>{
       sel.addEventListener('change',()=>{
-        const pid=sel.dataset.pid,cat1=sel.value;
-        const sel2=document.querySelector(`.pending-cat2[data-pid="${pid}"]`);
-        const subs=this._getSubOptions(cat1);
-        sel2.innerHTML='<option value="">小分類</option>'+subs.map(s=>`<option value="${s.name}">${s.name}</option>`).join('');
+        const sel2=document.querySelector(`.pending-cat2[data-pid="${sel.dataset.pid}"]`);
+        const subs=cats.find(c=>c.name===sel.value)?.subs||[];
+        sel2.innerHTML='<option value="">小分類</option>'+subs.map(s=>`<option value="${s}">${s}</option>`).join('');
         sel2.disabled=!subs.length;
       });
     });
@@ -2319,9 +1867,8 @@ class App {
         const pid=row.dataset.pid;
         const cat1=row.querySelector(`.pending-cat1[data-pid="${pid}"]`)?.value||'';
         const cat2=row.querySelector(`.pending-cat2[data-pid="${pid}"]`)?.value||'';
-        if(!cat1) return;
-        this.store.updateExpense(pid,{category1:cat1,category2:cat2,status:'categorized'});
-        saved++;
+        if(!cat1)return;
+        this.store.updateExpense(pid,{category1:cat1,category2:cat2,status:'categorized'});saved++;
       });
       this.toast(`已更新 ${saved} 筆分類`,'success');this.closeModal(()=>this.renderView());
     });
@@ -2333,10 +1880,9 @@ class App {
       <div class="modal-handle"></div>
       <div class="modal-header"><div class="modal-title">🧾 發票匯入</div><button class="modal-close" id="modal-close-btn">✕</button></div>
       <div class="modal-body" style="gap:9px;">
-        <p style="font-size:11px;color:var(--text2);line-height:1.6;">目前保留 CSV 匯入方式，不再使用財政部 API Key。</p>
         <div class="import-choice-card" id="choice-csv">
           <div class="import-choice-icon">📂</div>
-          <div><div class="import-choice-title">匯入 CSV 檔案</div><div class="import-choice-sub">從財政部平台下載的 CSV 匯入</div></div>
+          <div><div class="import-choice-title">匯入 CSV 檔案</div><div class="import-choice-sub">財政部平台下載的 CSV（免 API）</div></div>
           <div class="import-choice-arrow">›</div>
         </div>
       </div>`);
@@ -2347,38 +1893,27 @@ class App {
     const overlay=document.getElementById('modal-overlay');
     const content=document.getElementById('modal-content');
     const backdrop=document.getElementById('modal-backdrop');
-    content.classList.add('sheet-mode');
-    content.innerHTML=html;
-    overlay.classList.remove('hidden');
-    backdrop.classList.add('visible');
+    content.classList.add('sheet-mode');content.innerHTML=html;
+    overlay.classList.remove('hidden');backdrop.classList.add('visible');
     requestAnimationFrame(()=>content.classList.add('slide-in'));
     ['modal-close-btn','modal-cancel-btn'].forEach(id=>document.getElementById(id)?.addEventListener('click',()=>this.closeModal()));
     backdrop.addEventListener('click',e=>{if(e.target===backdrop)this.closeModal();},{once:true});
   }
 
-  // ─── Apply store mapping to imported items ────────────────────
-  _applyStoreMapping(storeNameRaw) {
+  _applyStoreMapping(storeName) {
     const rules=this.store.data.storeMapping||[];
-    for(const rule of rules){
-      if(storeNameRaw.toLowerCase().includes(rule.store.toLowerCase())){
-        return {cat1:rule.cat1,cat2:rule.cat2};
-      }
-    }
-    return {cat1:'',cat2:''};
+    for(const rule of rules){if(storeName.toLowerCase().includes(rule.store.toLowerCase()))return{cat1:rule.cat1,cat2:rule.cat2};}
+    return{cat1:'',cat2:''};
   }
 
   _handleCsvFile(event) {
-    const file=event.target.files[0]; if(!file) return;
+    const file=event.target.files[0];if(!file)return;
     const reader=new FileReader();
     reader.onload=e=>{
-      try {
-        const rows=this.csvParser.parse(e.target.result);
-        if(!rows.length){this.toast('CSV 中沒有有效資料','error');return;}
-        this._showCsvPreviewModal(rows);
-      } catch(err){this.toast('CSV 解析失敗：'+err.message,'error');}
+      try{const rows=this.csvParser.parse(e.target.result);if(!rows.length){this.toast('無有效資料','error');return;}this._showCsvPreviewModal(rows);}
+      catch(err){this.toast('CSV 解析失敗：'+err.message,'error');}
     };
-    reader.readAsText(file,'utf-8');
-    event.target.value='';
+    reader.readAsText(file,'utf-8');event.target.value='';
   }
 
   _showCsvPreviewModal(rows) {
@@ -2404,8 +1939,8 @@ class App {
           <div><div class="csv-summary-num" style="color:var(--amber)">$${rows.reduce((s,r)=>s+r.amount,0).toLocaleString()}</div><div class="csv-summary-label">總金額</div></div>
           <div><div class="csv-summary-num" style="color:${newRows.length>0?'var(--green)':'var(--text3)'}">${newRows.length}</div><div class="csv-summary-label">待匯入</div></div>
         </div>
-        ${skipCount>0?`<div class="csv-skip-note">⚠ ${skipCount} 筆已匯入，將略過</div>`:''}
-        <div style="max-height:300px;overflow-y:auto;margin:0 -14px;padding:0 14px 14px;">${invoiceHTML}</div>
+        ${skipCount>0?`<div class="csv-skip-note">⚠ ${skipCount} 筆已匯入，略過</div>`:''}
+        <div style="max-height:280px;overflow-y:auto;margin:0 -14px;padding:0 14px 14px;">${invoiceHTML}</div>
       </div>
       <div class="modal-footer">
         <button class="btn-secondary" id="modal-cancel-btn">取消</button>
@@ -2418,42 +1953,15 @@ class App {
     let imported=0;
     for(const r of rows){
       const key=r.invoiceNo+'_'+r.description;
-      if(this.store.isInvoiceImported(key)) continue;
+      if(this.store.isInvoiceImported(key))continue;
       const mapped=this._applyStoreMapping(r.store);
-      this.store.addExpense({date:r.date,amount:r.amount,amountTwd:r.amount,currency:'TWD',description:r.description,store:r.store,
-        category1:mapped.cat1,category2:mapped.cat2,
-        status:mapped.cat1?'categorized':'pending',source:'invoice',invoiceNo:r.invoiceNo});
+      this.store.addExpense({date:r.date,amount:r.amount,description:r.description,store:r.store,currency:'TWD',
+        category1:mapped.cat1,category2:mapped.cat2,status:mapped.cat1?'categorized':'pending',source:'invoice',invoiceNo:r.invoiceNo});
       this.store.markInvoiceImported(key);imported++;
     }
-    this.toast(`✅ 已匯入 ${imported} 筆發票明細`,'success');
+    this.toast(`✅ 已匯入 ${imported} 筆`,'success');
     if(rows.length>0&&rows[0].date){const d=new Date(rows[0].date);this.calendarYear=d.getFullYear();this.calendarMonth=d.getMonth()+1;this.selected=rows[0].date;}
     this.closeModal(()=>this.renderView());
-  }
-
-  async _fetchInvoicesApi() {
-    this.toast('連線財政部 API…','info');
-    try {
-      const end=new Date(),start=new Date(end);start.setDate(start.getDate()-90);
-      const f6=d=>`${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
-      const result=await this.invoice.fetchInvoices(this.store.data.settings,f6(start),f6(end));
-      const list=result.details||result.invoiceList||[];
-      let imported=0;
-      for(const inv of list){
-        const no=inv.invNum||inv.invoiceNumber||'';
-        if(!no||this.store.isInvoiceImported(no)) continue;
-        const rawDate=inv.invDate||inv.invoiceDate||'';
-        const ds=this.invoice.parseInvoiceDate(rawDate.replace(/\//g,''));
-        const mapped=this._applyStoreMapping(inv.sellerName||'');
-        const invAmount=Number(inv.amount||inv.invAmount||0);
-        this.store.addExpense({date:ds||fmt.today(),amount:invAmount,amountTwd:invAmount,currency:'TWD',
-          description:inv.sellerName||`發票 ${no}`,store:inv.sellerName||'',
-          category1:mapped.cat1,category2:mapped.cat2,
-          status:mapped.cat1?'categorized':'pending',source:'invoice',invoiceNo:no});
-        this.store.markInvoiceImported(no);imported++;
-      }
-      this.toast(imported>0?`已匯入 ${imported} 張新發票`:'沒有新的發票',imported>0?'success':'info');
-      if(imported>0) this.renderView();
-    } catch(err){this.toast(`失敗：${err.message}`,'error');}
   }
 
   // ─── BACKUP ───────────────────────────────────────────────────
@@ -2465,67 +1973,19 @@ class App {
     this.toast('已匯出備份','success');
   }
   importLocal(event) {
-    const file=event.target.files[0]; if(!file) return;
+    const file=event.target.files[0];if(!file)return;
     const reader=new FileReader();
     reader.onload=e=>{
-      try {
-        const raw=JSON.parse(e.target.result);
-        const msg=`備份包含 ${(raw.expenses||[]).length} 筆記錄\n確定匯入？`;
-        if(!confirm(msg)) return;
-        this.store.import(raw);this.toast('備份匯入成功','success');this.renderView();
-      } catch(err){this.toast('匯入失敗：'+err.message,'error');}
+      try{const raw=JSON.parse(e.target.result);if(!confirm(`備份包含 ${(raw.expenses||[]).length} 筆記錄\n確定匯入？`))return;this.store.import(raw);this.toast('備份匯入成功','success');this.closeModal(()=>this.renderView());}
+      catch(err){this.toast('匯入失敗：'+err.message,'error');}
     };
     reader.readAsText(file);event.target.value='';
-  }
-  async driveUpload(refreshModal=false) {
-    const btn=document.getElementById('drive-upload-btn');
-    if(btn){btn.textContent='上傳中…';btn.disabled=true;}
-    try {
-      await this.drive.init(this.store.data.settings.googleClientId);
-      const data=this.store.export();data._exportedAt=new Date().toISOString();
-      await this.drive.uploadBackup(data);
-      this.store.data.lastSync=new Date().toLocaleString('zh-TW');
-      this.store.save();
-      this.toast('已上傳至 Google Drive','success');
-      this.renderView();
-      if(refreshModal) await this.driveList(true);
-    } catch(err){
-      this.toast('上傳失敗：'+err.message,'error');
-    } finally {
-      if(btn){btn.textContent='☁️ 上傳目前資料為新備份';btn.disabled=false;}
-    }
-  }
-
-  async driveList(inModal=false) {
-    const listEl=document.getElementById('drive-backup-list');
-    try {
-      if(!this.store.data.settings.googleClientId) throw new Error('請先儲存 Google Client ID');
-      await this.drive.init(this.store.data.settings.googleClientId);
-      const files=await this.drive.listBackups();
-      if(!listEl) return;
-      if(!files.length){
-        listEl.innerHTML='<p style="font-size:10px;color:var(--text3);">尚無雲端備份</p>';
-        return;
-      }
-      listEl.innerHTML=files.slice(0,5).map(f=>`
-        <div class="backup-item">
-          <div class="backup-item-info">
-            <div class="backup-item-name">${f.name}</div>
-            <div class="backup-item-date">${new Date(f.modifiedTime).toLocaleString('zh-TW')}${f.size?` · ${Number(f.size).toLocaleString('zh-TW')} bytes`:''}</div>
-          </div>
-          <button class="backup-item-btn" data-file-id="${f.id}">匯入</button>
-        </div>`).join('');
-      this._bindDriveBackupButtons(listEl);
-    } catch(err){
-      if(listEl) listEl.innerHTML=`<p style="font-size:10px;color:var(--red);">${err.message}</p>`;
-      this.toast('載入失敗：'+err.message,'error');
-    }
   }
 
   // ─── TOAST ────────────────────────────────────────────────────
   toast(msg,type='info') {
-    const el=document.getElementById('toast'); if(!el) return;
-    el.textContent=msg; el.className=`show ${type}`;
+    const el=document.getElementById('toast');if(!el)return;
+    el.textContent=msg;el.className=`show ${type}`;
     clearTimeout(this._toastTimer);
     this._toastTimer=setTimeout(()=>{el.className='';},2800);
   }
@@ -2533,3 +1993,6 @@ class App {
 
 // ── BOOT ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded',()=>{window._app=new App();window._app.init();});
+
+}
+}
