@@ -1535,6 +1535,7 @@ class App {
     };
 
     // ── full modal HTML ───────────────────────────────────────────────────────
+    content.style.transform=''; content.style.transition=''; content.style.opacity='';
     content.innerHTML=`
       <div class="modal-topbar">
         <button class="modal-topbar-btn" id="modal-close-btn">✕</button>
@@ -1884,6 +1885,7 @@ class App {
     const content=document.getElementById('modal-content');
     const backdrop=document.getElementById('modal-backdrop');
     content.classList.remove('sheet-mode');
+    content.style.transform=''; content.style.transition=''; content.style.opacity='';
     content.innerHTML=`
       <div class="modal-topbar">
         <button class="modal-topbar-btn" id="modal-close-btn">✕</button>
@@ -1947,6 +1949,7 @@ class App {
     const content=document.getElementById('modal-content');
     const backdrop=document.getElementById('modal-backdrop');
     content.classList.remove('sheet-mode');
+    content.style.transform=''; content.style.transition=''; content.style.opacity='';
     content.innerHTML=`
       <div class="modal-topbar">
         <button class="modal-topbar-btn" id="modal-close-btn">✕</button>
@@ -2059,6 +2062,7 @@ class App {
     const content=document.getElementById('modal-content');
     const backdrop=document.getElementById('modal-backdrop');
     content.classList.remove('sheet-mode');
+    content.style.transform=''; content.style.transition=''; content.style.opacity='';
     content.innerHTML=`
       <div class="modal-topbar">
         <button class="modal-topbar-btn" id="modal-close-btn">✕</button>
@@ -2231,10 +2235,17 @@ class App {
   }
 
   _setupGlobalSwipeBack() {
+    // EDGE-ONLY swipe-back: only activates when touch starts within 22px of left edge.
+    // This prevents any accidental triggering when tapping buttons, scrolling lists, etc.
+    const EDGE_ZONE   = 22;   // px from left edge to start swipe
+    const MIN_DIST    = 10;   // px before we commit to a direction
+    const DISMISS_PCT = 0.38; // fraction of screen width to trigger close
+
     let sx=null, sy=null, dx=0, dy=0, phase='idle';
-    // phase: 'idle' | 'deciding' | 'swiping-h' | 'scrolling-v'
 
     const onStart = e => {
+      // Only watch touches that BEGIN in the left edge zone
+      if (e.touches[0].clientX > EDGE_ZONE) return;
       const overlay = document.getElementById('modal-overlay');
       if (!overlay || overlay.classList.contains('hidden')) return;
       const content = document.getElementById('modal-content');
@@ -2243,35 +2254,34 @@ class App {
     };
 
     const onMove = e => {
-      if (phase === 'idle' || phase === 'scrolling-v') return;
-      const content = document.getElementById('modal-content');
-      if (!content) return;
+      if (phase === 'idle' || phase === 'dead') return;
       dx = e.touches[0].clientX - sx;
       dy = e.touches[0].clientY - sy;
       if (phase === 'deciding') {
-        if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return; // not enough movement yet
-        // Only start horizontal swipe if clearly more horizontal AND moving right
-        if (Math.abs(dx) > Math.abs(dy) * 1.5 && dx > 0) {
-          phase = 'swiping-h';
+        if (Math.abs(dx) < MIN_DIST && Math.abs(dy) < MIN_DIST) return;
+        if (dx > 0 && Math.abs(dx) >= Math.abs(dy)) {
+          phase = 'swiping';
         } else {
-          phase = 'scrolling-v'; // let vertical scroll through unobstructed
+          phase = 'dead'; // vertical or leftward — abort
           return;
         }
       }
-      // phase === 'swiping-h' — follow finger
-      if (dx > 0) {
-        e.preventDefault(); // prevent scroll while we're taking over
-        content.style.transform = `translateX(${Math.min(dx, window.innerWidth)}px)`;
-        content.style.transition = 'none';
+      if (phase === 'swiping' && dx > 0) {
+        e.preventDefault();
+        const content = document.getElementById('modal-content');
+        if (content) {
+          content.style.transform = `translateX(${Math.min(dx, window.innerWidth)}px)`;
+          content.style.transition = 'none';
+        }
       }
     };
 
     const onEnd = () => {
-      if (phase === 'swiping-h') {
+      if (phase === 'swiping') {
         const content = document.getElementById('modal-content');
         if (content) {
           content.style.transition = '';
-          if (dx > window.innerWidth * 0.35) {
+          if (dx > window.innerWidth * DISMISS_PCT) {
             this.closeModal();
           } else {
             content.style.transform = content.classList.contains('slide-in') ? 'translateX(0)' : '';
@@ -2281,26 +2291,38 @@ class App {
       sx=null; sy=null; dx=0; dy=0; phase='idle';
     };
 
-    // passive:false on touchmove so we can call preventDefault when needed
     document.addEventListener('touchstart', onStart, {passive:true});
     document.addEventListener('touchmove',  onMove,  {passive:false});
     document.addEventListener('touchend',   onEnd,   {passive:true});
+    document.addEventListener('touchcancel',onEnd,   {passive:true});
   }
 
   closeModal(cb) {
     const content=document.getElementById('modal-content');
     const overlay=document.getElementById('modal-overlay');
     const backdrop=document.getElementById('modal-backdrop');
-    content.classList.remove('slide-in');backdrop.classList.remove('visible');
-    setTimeout(()=>{overlay.classList.add('hidden');content.innerHTML='';content.classList.remove('sheet-mode');this._editId=null;if(cb)cb();},300);
+    if(!content) { if(cb) cb(); return; }
+    // Always reset transform/transition — swipe-back may have left a residual value
+    content.style.transform = '';
+    content.style.transition = '';
+    content.style.opacity = '';
+    content.classList.remove('slide-in');
+    backdrop.classList.remove('visible');
+    setTimeout(()=>{
+      overlay.classList.add('hidden');
+      content.innerHTML='';
+      content.style.transform='';
+      content.style.transition='';
+      content.style.opacity='';
+      content.classList.remove('sheet-mode');
+      this._editId=null;
+      if(cb) cb();
+    },300);
   }
 
   _attachModalSwipeBack(el,onClose) {
-    if(!el)return;
-    let sx=null,sy=null,dx=0;
-    el.addEventListener('touchstart',e=>{if(e.touches[0].clientX>40)return;sx=e.touches[0].clientX;sy=e.touches[0].clientY;dx=0;},{passive:true});
-    el.addEventListener('touchmove',e=>{if(sx===null)return;dx=e.touches[0].clientX-sx;const dy=e.touches[0].clientY-sy;if(Math.abs(dx)>Math.abs(dy)&&dx>0){const p=Math.min(dx/200,1);el.style.transform=`translateX(${Math.min(dx,200)}px)`;el.style.opacity=String(1-p*.3);}},{passive:true});
-    el.addEventListener('touchend',e=>{if(sx===null)return;el.style.transform='';el.style.opacity='';if(dx>80)onClose();sx=null;sy=null;dx=0;},{passive:true});
+    // No-op: global swipe-back (_setupGlobalSwipeBack) handles all modals uniformly.
+    // Keeping this method signature so existing callers don't break.
   }
 
   // ─── PENDING MODAL ────────────────────────────────────────────
@@ -2371,7 +2393,8 @@ class App {
     const overlay=document.getElementById('modal-overlay');
     const content=document.getElementById('modal-content');
     const backdrop=document.getElementById('modal-backdrop');
-    content.classList.add('sheet-mode');content.innerHTML=html;
+    content.style.transform=''; content.style.transition=''; content.style.opacity='';
+    content.style.transform=''; content.style.transition=''; content.style.opacity=''; content.classList.add('sheet-mode');content.innerHTML=html;
     overlay.classList.remove('hidden');backdrop.classList.add('visible');
     requestAnimationFrame(()=>content.classList.add('slide-in'));
     ['modal-close-btn','modal-cancel-btn'].forEach(id=>document.getElementById(id)?.addEventListener('click',()=>this.closeModal()));
