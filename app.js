@@ -1,5 +1,5 @@
 /* ─────────────────────────────────────────────────────────────
-   Cost Record PWA — app.js  V2.2
+   Cost Record PWA — app.js  V2.3
    Modules: DataStore · DriveService · CurrencyService · App
 ───────────────────────────────────────────────────────────── */
 'use strict';
@@ -13,17 +13,17 @@ const DRIVE_FOLDER  = '#PWA-Cost-Record';
 // CURRENCIES defined below
 
 const DEFAULT_CATEGORIES = [
-  { name:'飲食',  icon:'🍽️', subs:['早餐','午餐','晚餐','點心','飲料','宵夜','水果','酒類'] },
+  { name:'飲食',  icon:'🍱', subs:['早餐','午餐','晚餐','點心','飲料','宵夜','水果','酒類'] },
   { name:'交通',  icon:'🚗', subs:['加油費','停車費','摩托車','汽車','火車','計程車','單車'] },
-  { name:'購物',  icon:'🛍️', subs:['市場','衣物','鞋子','電子產品','美妝保養','禮物','配件'] },
-  { name:'家居',  icon:'🏠', subs:['家具','家電','日常用品','電費','水費','網路費','管理費'] },
-  { name:'娛樂',  icon:'🎮', subs:['影音','電影','運動','遊戲','展覽','遊樂園'] },
+  { name:'購物',  icon:'🛒', subs:['市場','衣物','鞋子','電子產品','美妝保養','禮物','配件'] },
+  { name:'家居',  icon:'🏠', subs:['家具','家電','日常用品','電費','水費','網路費','管理費','燃料費','洗衣費','電話費','新屋支出','裝飾'] },
+  { name:'娛樂',  icon:'🎮', subs:['影音','電影','運動','遊戲','展覽','遊樂園','消遣','博弈'] },
   { name:'學習',  icon:'📚', subs:['書籍','課程','教材','文具','證書'] },
-  { name:'醫療',  icon:'🏥', subs:['門診','藥品','保健食品','牙齒保健','健康檢查'] },
-  { name:'個人',  icon:'👤', subs:['保險','稅金','理髮','捐款','通話費'] },
-  { name:'家庭',  icon:'👨‍👩‍👧‍👦', subs:['才藝','玩具','禮金','結婚'] },
-  { name:'生活',  icon:'🌟', subs:['旅行','住宿','按摩','派對','美容美髮'] },
-  { name:'其他',  icon:'💰', subs:['其他'] }
+  { name:'醫療',  icon:'💊', subs:['門診','藥品','保健食品','牙齒保健','健康檢查','醫療用品'] },
+  { name:'個人',  icon:'💼', subs:['保險','稅金','理髮','捐款','通話費','社交'] },
+  { name:'家庭',  icon:'👨‍👩‍👧', subs:['才藝','玩具','禮金','結婚'] },
+  { name:'生活',  icon:'🌸', subs:['旅行','住宿','按摩','派對','美容美髮','蜜月旅行','出遊- 東京行','出遊- 泰國行'] },
+  { name:'其他',  icon:'📦', subs:['其他'] }
 ];
 
 // Full icon map for categories
@@ -83,9 +83,9 @@ class DataStore {
         // Migrate: ensure categories have icon field
         if (d.categories) {
           d.categories = d.categories.map(c => ({
-            icon: CAT_ICONS[c.name] || '📁',
+            icon: CAT_ICON_MAP[c.name] || '📦',
             ...c,
-            subs: (c.subs||[]).map(s => typeof s === 'string' ? {name:s, icon:CAT_ICONS[s]||'📁'} : s)
+            subs: (c.subs||[]).map(s => typeof s === 'string' ? {name:s, icon:CAT_ICON_MAP[s]||'📦'} : s)
           }));
         }
         // Migrate: ensure settings has currency
@@ -104,7 +104,7 @@ class DataStore {
       expenses: [],
       categories: DEFAULT_CATEGORIES.map(c => ({
         ...c,
-        subs: c.subs.map(s => ({ name: s, icon: CAT_ICONS[s]||'📁' }))
+        subs: c.subs.map(s => ({ name: s, icon: CAT_ICON_MAP[s]||'📦' }))
       })),
       settings: {
         geminiApiKey: '', geminiModel: 'gemini-1.5-flash',
@@ -170,10 +170,10 @@ class DataStore {
   }
   getCatSubIcon(cat1Name, cat2Name) {
     const cat = this.data.categories.find(c=>c.name===cat1Name);
-    if(!cat) return CAT_ICONS[cat2Name]||'📁';
+    if(!cat) return CAT_ICON_MAP[cat2Name]||'📦';
     const sub = cat.subs.find(s=>(typeof s==='string'?s:s.name)===cat2Name);
-    if(typeof sub==='string') return CAT_ICONS[sub]||'📁';
-    return sub?.icon || CAT_ICONS[cat2Name]||'📁';
+    if(typeof sub==='string') return CAT_ICON_MAP[sub]||'📦';
+    return sub?.icon || CAT_ICON_MAP[cat2Name]||'📦';
   }
 }
 
@@ -377,27 +377,50 @@ const CAT_ICON_MAP = {
   // 大分類
   '飲食':'🍱','交通':'🚗','家居':'🏠','購物':'🛒','娛樂':'🎮','醫療':'💊',
   '學習':'📚','生活':'🌸','個人':'💼','家庭':'👨‍👩‍👧','其他':'📦',
-  // 小分類
+  // 飲食
   '早餐':'🍳','午餐':'🍱','晚餐':'🍜','宵夜':'🌙','點心':'🧁','飲料':'🧋',
   '水果':'🍎','酒類':'🍺',
+  // 交通
   '加油費':'⛽','停車費':'🅿️','火車':'🚊','計程車':'🚕','摩托車':'🛵','汽車':'🚗','單車':'🚲',
+  // 家居
   '家具':'🛋️','家電':'📺','日常用品':'🧹','電費':'💡','水費':'💧','網路費':'📡',
   '管理費':'🏢','燃料費':'🔥','洗衣費':'👕','電話費':'📞',
-  '市場':'🛒','衣物':'👕','鞋子':'👟','電子產品':'💻','美妝保養':'💄',
+  '新屋支出':'🏗️','裝飾':'🪴',
+  // 購物
+  '市場':'🛒','衣物':'👗','鞋子':'👟','電子產品':'💻','美妝保養':'💄',
   '配件':'⌚','禮物':'🎁',
-  '電影':'🎬','影音':'🎵','運動':'⚽','遊戲':'🎮','展覽':'🎨','遊樂園':'🎡','消遣':'☕','博弈':'🎲',
-  '門診':'🏥','藥品':'💊','保健食品':'🧴','牙齒保健':'🦷','健康檢查':'🩺',
+  // 娛樂
+  '電影':'🎬','影音':'🎵','運動':'⚽','遊戲':'🎮','展覽':'🖼️','遊樂園':'🎡','消遣':'☕','博弈':'🎲',
+  // 醫療
+  '門診':'🏥','藥品':'💊','保健食品':'🌿','牙齒保健':'🦷','健康檢查':'🩺','醫療用品':'🩹',
+  // 學習
   '書籍':'📖','課程':'🎓','教材':'✏️','文具':'📝','證書':'🏆',
+  // 生活
   '住宿':'🏨','旅行':'✈️','按摩':'💆','派對':'🎉',
-  '蜜月旅行':'💕','美容美髮':'💇',
-  '保險':'🛡️','稅金':'📋','理髮':'✂️','捐款':'🤝','通話費':'📱','社交':'🤝','稅':'📋',
-  '才藝':'🎨','玩具':'🪆','禮金':'💰','結婚':'💍',
+  '蜜月旅行':'💑','美容美髮':'💇',
+  '出遊- 東京行':'🗼','出遊- 泰國行':'🏖️',
+  // 個人
+  '保險':'🛡️','稅金':'📋','理髮':'✂️','捐款':'🤝','通話費':'📱','社交':'👥',
+  // 家庭
+  '才藝':'🎨','玩具':'🪆','禮金':'🧧','結婚':'💍',
+  // 其他
   '其他':'📦'
 };
 
 function getCatIcon2(name, customIcons) {
   if(customIcons && customIcons[name]) return customIcons[name];
   return CAT_ICON_MAP[name] || '📦';
+}
+
+// Helper: safely extract name string from sub (may be string or {name,icon} object)
+function subName(sub) { return typeof sub === 'string' ? sub : (sub?.name || ''); }
+// Helper: safely extract icon from sub object, falling back to CAT_ICON_MAP
+function subIcon(sub, customIcons) {
+  if(typeof sub === 'object' && sub !== null) {
+    if(customIcons && customIcons[sub.name]) return customIcons[sub.name];
+    return sub.icon || CAT_ICON_MAP[sub.name] || '📦';
+  }
+  return getCatIcon2(sub, customIcons);
 }
 
 // Exchange rates (relative to TWD)
@@ -448,7 +471,10 @@ class App {
     const _cb=document.getElementById('currency-btn');if(_cb)_cb.textContent=v;
   }
   get customIcons() { return this.store.data.categoryIcons || {}; }
-  catIcon(name) { return getCatIcon2(name, this.customIcons); }
+  catIcon(name) {
+    if(typeof name === 'object' && name !== null) return subIcon(name, this.customIcons);
+    return getCatIcon2(name, this.customIcons);
+  }
   money(n) { return fmt.money(n, this._currency); }
 
   // ─── INIT ────────────────────────────────────────────────────
@@ -507,14 +533,39 @@ class App {
   _registerSW() {
     if(!('serviceWorker' in navigator)) return;
     navigator.serviceWorker.register('./service-worker.js').then(reg=>{
+      // Listen for SW update found (new SW installing)
       reg.addEventListener('updatefound',()=>{
-        reg.installing?.addEventListener('statechange',()=>{
-          if(reg.installing?.state==='installed'&&navigator.serviceWorker.controller)
-            document.getElementById('update-banner').style.display='block';
+        const newWorker = reg.installing;
+        newWorker?.addEventListener('statechange',()=>{
+          if(newWorker.state==='installed' && navigator.serviceWorker.controller)
+            this._showUpdateBanner();
         });
       });
+      // Periodic check: poll for updates every 60 seconds
+      setInterval(()=>reg.update(), 60000);
+      // Also check version.js directly for version mismatch (handles GitHub Pages CDN cache)
+      this._checkRemoteVersion();
+      setInterval(()=>this._checkRemoteVersion(), 120000);
     });
+    // When SW controller changes (new SW activated), auto reload
     navigator.serviceWorker.addEventListener('controllerchange',()=>window.location.reload());
+  }
+
+  _showUpdateBanner() {
+    const b = document.getElementById('update-banner');
+    if(b) b.style.display='block';
+  }
+
+  async _checkRemoteVersion() {
+    try {
+      const r = await fetch('./version.js?_=' + Date.now(), {cache:'no-store'});
+      if(!r.ok) return;
+      const text = await r.text();
+      const m = text.match(/APP_VERSION\s*=\s*['"]([^'"]+)['"]/);
+      if(m && m[1] && m[1] !== APP_VERSION) {
+        this._showUpdateBanner();
+      }
+    } catch(e) { /* offline */ }
   }
 
   renderView() {
@@ -1219,7 +1270,7 @@ class App {
               ${(cat.subs||[]).map((sub,si)=>`
                 <div class="cat2-sub-item">
                   <span class="cat2-sub-icon" data-action="icon-sub" data-ci="${ci}" data-si="${si}">${this.catIcon(sub)}</span>
-                  <span class="cat2-sub-name">${sub}</span>
+                  <span class="cat2-sub-name">${subName(sub)}</span>
                   <div style="display:flex;gap:4px;margin-left:auto;">
                     <button class="cat-action-btn" data-action="rename-sub" data-ci="${ci}" data-si="${si}">改名</button>
                     <button class="cat-action-btn danger" data-action="del-sub" data-ci="${ci}" data-si="${si}">刪除</button>
@@ -1266,18 +1317,23 @@ class App {
     const cats=this.store.data.categories;
     if(action==='rename-cat') this._promptCatName('修改大分類',cats[ci].name,name=>{cats[ci].name=name;this.store.save();this.closeModal();setTimeout(()=>this._openCategoriesPage(),320);this.toast('已更新','success');});
     else if(action==='del-cat'){if(!confirm(`刪除「${cats[ci].name}」？`))return;cats.splice(ci,1);this.store.save();this.closeModal();setTimeout(()=>this._openCategoriesPage(),320);this.toast('已刪除','success');}
-    else if(action==='add-sub'){const inp=document.getElementById('sub-input-'+ci);const n=inp?.value.trim();if(!n){this.toast('請輸入名稱','error');return;}cats[ci].subs.push(n);this.store.save();this.closeModal();setTimeout(()=>this._openCategoriesPage(),320);this.toast('已新增','success');}
-    else if(action==='rename-sub') this._promptCatName('修改小分類',cats[ci].subs[si],name=>{cats[ci].subs[si]=name;this.store.save();this.closeModal();setTimeout(()=>this._openCategoriesPage(),320);this.toast('已更新','success');});
-    else if(action==='del-sub'){if(!confirm(`刪除「${cats[ci].subs[si]}」？`))return;cats[ci].subs.splice(si,1);this.store.save();this.closeModal();setTimeout(()=>this._openCategoriesPage(),320);this.toast('已刪除','success');}
+    else if(action==='add-sub'){const inp=document.getElementById('sub-input-'+ci);const n=inp?.value.trim();if(!n){this.toast('請輸入名稱','error');return;}cats[ci].subs.push({name:n,icon:CAT_ICON_MAP[n]||'📦'});this.store.save();this.closeModal();setTimeout(()=>this._openCategoriesPage(),320);this.toast('已新增','success');}
+    else if(action==='rename-sub') this._promptCatName('修改小分類',subName(cats[ci].subs[si]),name=>{const old=cats[ci].subs[si];cats[ci].subs[si]=typeof old==='object'?{...old,name}:{name,icon:CAT_ICON_MAP[name]||'📦'};this.store.save();this.closeModal();setTimeout(()=>this._openCategoriesPage(),320);this.toast('已更新','success');});
+    else if(action==='del-sub'){if(!confirm(`刪除「${subName(cats[ci].subs[si])}」？`))return;cats[ci].subs.splice(si,1);this.store.save();this.closeModal();setTimeout(()=>this._openCategoriesPage(),320);this.toast('已刪除','success');}
     else if(action==='icon-cat'){
       const cur=this.catIcon(cats[ci].name);
       this.closeModal();
       setTimeout(()=>this._openIconPicker(`${cats[ci].name} 圖示`,cur,ico=>{if(!this.store.data.categoryIcons)this.store.data.categoryIcons={};this.store.data.categoryIcons[cats[ci].name]=ico;this.store.save();setTimeout(()=>this._openCategoriesPage(),320);this.toast('圖示已更新','success');}),320);
     }
     else if(action==='icon-sub'){
-      const sub=cats[ci].subs[si];const cur=this.catIcon(sub);
+      const sub=cats[ci].subs[si];const sn=subName(sub);const cur=this.catIcon(sub);
       this.closeModal();
-      setTimeout(()=>this._openIconPicker(`${sub} 圖示`,cur,ico=>{if(!this.store.data.categoryIcons)this.store.data.categoryIcons={};this.store.data.categoryIcons[sub]=ico;this.store.save();setTimeout(()=>this._openCategoriesPage(),320);this.toast('圖示已更新','success');}),320);
+      setTimeout(()=>this._openIconPicker(`${sn} 圖示`,cur,ico=>{
+        const s=cats[ci].subs[si];
+        if(typeof s==='object') cats[ci].subs[si]={...s,icon:ico};
+        else cats[ci].subs[si]={name:sn,icon:ico};
+        this.store.save();setTimeout(()=>this._openCategoriesPage(),320);this.toast('圖示已更新','success');
+      }),320);
     }
   }
   _promptCatName(title,def,cb){const n=prompt(title,def);if(n&&n.trim())cb(n.trim());}
@@ -1455,9 +1511,9 @@ class App {
         <div class="edit-cat-label">${cat.name}</div>
       </button>`).join('');
     const cat2Html=selectedCat?(selectedCat.subs||[]).map(sub=>`
-      <button class="edit-cat-btn${firstCat2===sub?' selected':''}" data-cat1="${selectedCat.name}" data-cat2="${sub}">
+      <button class="edit-cat-btn${firstCat2===subName(sub)?' selected':''}" data-cat1="${selectedCat.name}" data-cat2="${subName(sub)}">
         <div class="edit-cat-circle">${this.catIcon(sub)}</div>
-        <div class="edit-cat-label">${sub}</div>
+        <div class="edit-cat-label">${subName(sub)}</div>
       </button>`).join(''):'';
     const overlay=document.getElementById('modal-overlay');
     const content=document.getElementById('modal-content');
@@ -1496,7 +1552,7 @@ class App {
         const cat=cats.find(c=>c.name===btn.dataset.cat1);
         const area=document.getElementById('grp-cat2-area');const row=document.getElementById('grp-cat2-row');
         if(cat&&cat.subs?.length){
-          row.innerHTML=cat.subs.map(sub=>`<button class="edit-cat-btn" data-cat1="${btn.dataset.cat1}" data-cat2="${sub}"><div class="edit-cat-circle">${this.catIcon(sub)}</div><div class="edit-cat-label">${sub}</div></button>`).join('');
+          row.innerHTML=cat.subs.map(sub=>`<button class="edit-cat-btn" data-cat1="${btn.dataset.cat1}" data-cat2="${subName(sub)}"><div class="edit-cat-circle">${this.catIcon(sub)}</div><div class="edit-cat-label">${subName(sub)}</div></button>`).join('');
           area.classList.remove('hidden');
           row.querySelectorAll('.edit-cat-btn').forEach(b=>{b.addEventListener('click',()=>{row.querySelectorAll('.edit-cat-btn').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');});});
         } else {area.classList.add('hidden');}
@@ -1599,7 +1655,7 @@ class App {
 
   _populateSelect2(cat1,sel2,selectedCat2) {
     const subs=this.store.data.categories.find(c=>c.name===cat1)?.subs||[];
-    sel2.innerHTML='<option value="">-- 選擇 --</option>'+subs.map(s=>`<option value="${s}" ${s===selectedCat2?'selected':''}>${s}</option>`).join('');
+    sel2.innerHTML='<option value="">-- 選擇 --</option>'+subs.map(s=>`<option value="${subName(s)}" ${subName(s)===selectedCat2?'selected':''}>${subName(s)}</option>`).join('');
     sel2.disabled=!subs.length;
   }
 
@@ -1618,9 +1674,9 @@ class App {
       </button>`).join('');
     const selectedCat=cats.find(c=>c.name===e.category1);
     const cat2Html=selectedCat?(selectedCat.subs||[]).map(sub=>`
-      <button class="edit-cat-btn${e.category2===sub?' selected':''}" data-cat1="${selectedCat.name}" data-cat2="${sub}">
+      <button class="edit-cat-btn${e.category2===subName(sub)?' selected':''}" data-cat1="${selectedCat.name}" data-cat2="${subName(sub)}">
         <div class="edit-cat-circle">${this.catIcon(sub)}</div>
-        <div class="edit-cat-label">${sub}</div>
+        <div class="edit-cat-label">${subName(sub)}</div>
       </button>`).join(''):'';
     const invItems=(isEdit&&e.invoiceNo)?this.store.getInvoiceItems(e.invoiceNo):[];
     const invHtml=invItems.length>1?`
@@ -1686,7 +1742,7 @@ class App {
         const cat=cats.find(c=>c.name===btn.dataset.cat1);
         const area=document.getElementById('cat2-area');const row=document.getElementById('cat2-row');
         if(cat&&cat.subs?.length){
-          row.innerHTML=cat.subs.map(sub=>`<button class="edit-cat-btn" data-cat1="${btn.dataset.cat1}" data-cat2="${sub}"><div class="edit-cat-circle">${this.catIcon(sub)}</div><div class="edit-cat-label">${sub}</div></button>`).join('');
+          row.innerHTML=cat.subs.map(sub=>`<button class="edit-cat-btn" data-cat1="${btn.dataset.cat1}" data-cat2="${subName(sub)}"><div class="edit-cat-circle">${this.catIcon(sub)}</div><div class="edit-cat-label">${subName(sub)}</div></button>`).join('');
           area.classList.remove('hidden');
           row.querySelectorAll('.edit-cat-btn').forEach(b=>{b.addEventListener('click',()=>{row.querySelectorAll('.edit-cat-btn').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');});});
         } else {area.classList.add('hidden');}
@@ -1799,7 +1855,7 @@ class App {
       sel.addEventListener('change',()=>{
         const sel2=document.querySelector(`.pending-cat2[data-pid="${sel.dataset.pid}"]`);
         const subs=cats.find(c=>c.name===sel.value)?.subs||[];
-        sel2.innerHTML='<option value="">小分類</option>'+subs.map(s=>`<option value="${s}">${s}</option>`).join('');
+        sel2.innerHTML='<option value="">小分類</option>'+subs.map(s=>`<option value="${subName(s)}">${subName(s)}</option>`).join('');
         sel2.disabled=!subs.length;
       });
     });

@@ -1,4 +1,4 @@
-// Cost Record Service Worker - Auto Update Mechanism
+// Cost Record Service Worker V2.3 - Auto Update Mechanism
 importScripts('./version.js');
 
 const STATIC_ASSETS = [
@@ -14,13 +14,14 @@ const STATIC_ASSETS = [
 
 // ── Install: cache all static assets ─────────────────────────────────────────
 self.addEventListener('install', event => {
-  self.skipWaiting();
+  // Do NOT skipWaiting here — let the update banner trigger it
+  // so the user can choose when to reload
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_ASSETS))
   );
 });
 
-// ── Activate: delete old caches ───────────────────────────────────────────────
+// ── Activate: delete old caches & immediately take control ───────────────────
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(keys =>
@@ -31,29 +32,45 @@ self.addEventListener('activate', event => {
   );
 });
 
-// ── Fetch: stale-while-revalidate for HTML/JS/CSS, cache-first for others ────
+// ── Fetch: network-first for version.js so new versions are always detected ──
+//          stale-while-revalidate for other app shell files
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
-  // Skip non-GET and external requests
   if (event.request.method !== 'GET') return;
-  if (!url.origin.includes(self.location.origin) &&
-      !url.pathname.endsWith('.json') &&
-      !url.pathname.endsWith('.js') &&
-      !url.pathname.endsWith('.css') &&
-      !url.pathname.endsWith('.html')) return;
+  if (url.origin !== self.location.origin) return;
 
-  const isAppShell = STATIC_ASSETS.some(a => url.pathname.endsWith(a.replace('./', '/')));
+  const pathname = url.pathname;
+
+  // version.js: always network-first — must bypass cache to detect new deployments
+  if (pathname.endsWith('version.js')) {
+    event.respondWith(
+      fetch(event.request, { cache: 'no-store' })
+        .then(response => {
+          if (response.ok) {
+            caches.open(CACHE_NAME).then(cache => cache.put(event.request, response.clone()));
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // App shell: stale-while-revalidate
+  const isAppShell = STATIC_ASSETS.some(a => {
+    const clean = a.replace('./', '/');
+    return pathname === clean || pathname.endsWith(clean);
+  });
 
   if (isAppShell) {
-    // Stale-while-revalidate
     event.respondWith(
       caches.open(CACHE_NAME).then(cache =>
         cache.match(event.request).then(cached => {
           const networkFetch = fetch(event.request).then(response => {
-            cache.put(event.request, response.clone());
+            if (response.ok) cache.put(event.request, response.clone());
             return response;
-          });
+          }).catch(() => null);
           return cached || networkFetch;
         })
       )
@@ -61,7 +78,7 @@ self.addEventListener('fetch', event => {
   }
 });
 
-// ── Message: force update ─────────────────────────────────────────────────────
+// ── Message: SKIP_WAITING triggered by user tapping the update banner ─────────
 self.addEventListener('message', event => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();

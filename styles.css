@@ -146,7 +146,7 @@ input,select,textarea{font-size:16px!important;-webkit-text-size-adjust:100%}
 #modal-overlay:not(.hidden){pointer-events:all}
 #modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);z-index:100;opacity:0;transition:opacity .25s;pointer-events:none}
 #modal-backdrop.visible{opacity:1;pointer-events:all}
-#modal-content{position:fixed;inset:0;max-width:430px;margin:0 auto;background:var(--bg);z-index:101;display:flex;flex-direction:column;transform:translateX(105%);transition:transform .28s cubic-bezier(.4,0,.2,1);padding-top:env(safe-area-inset-top)}
+#modal-content{position:fixed;inset:0;max-width:430px;margin:0 auto;background:var(--bg);z-index:101;display:flex;flex-direction:column;transform:translateX(105%);transition:transform .28s cubic-bezier(.4,0,.2,1);padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
 #modal-content.slide-in{transform:translateX(0)}
 #modal-content.sheet-mode{inset:auto 0 0 0;border-radius:var(--radius) var(--radius) 0 0;max-height:88dvh;transform:translateY(105%);transition:transform .28s cubic-bezier(.4,0,.2,1);padding-top:0;padding-bottom:env(safe-area-inset-bottom)}
 #modal-content.sheet-mode.slide-in{transform:translateY(0)}
@@ -162,7 +162,7 @@ input,select,textarea{font-size:16px!important;-webkit-text-size-adjust:100%}
 .modal-title{font-size:15px;font-weight:700}
 .modal-close{background:var(--bg3);border:none;border-radius:6px;color:var(--text2);cursor:pointer;font-size:14px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;transition:color .2s}
 .modal-close:hover{color:var(--text)}
-.modal-body{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px;min-height:0}
+.modal-body{flex:1;overflow-y:auto;padding:12px 14px 20px;display:flex;flex-direction:column;gap:10px;min-height:0;overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch}
 .modal-body::-webkit-scrollbar{width:2px}
 .modal-body::-webkit-scrollbar-thumb{background:var(--bg4)}
 .modal-body-scroll{max-height:60dvh;overflow-y:auto;padding:10px 14px;display:flex;flex-direction:column;gap:9px}
