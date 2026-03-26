@@ -1,4 +1,4 @@
-/* Cost Record PWA — styles.css V3.0 */
+/* Cost Record PWA — styles.css V3.1 */
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=DM+Mono:wght@400;500&display=swap');
 :root{
   --bg:#181825;--bg2:#1e1e2e;--bg3:#252538;--bg4:#2e2e45;
@@ -513,8 +513,6 @@ input,select,textarea{font-size:16px!important;-webkit-text-size-adjust:100%}
 .drive-version-info{font-size:11px;color:var(--text3);margin-top:2px}
 @media(min-width:430px){#app{border-left:1px solid var(--border);border-right:1px solid var(--border);box-shadow:0 0 60px rgba(0,0,0,.8)}}
 
-/* PWA: body:position:fixed handles all cases */
-
 /* Google Drive login card */
 .drive-login-card{border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--border)}
 .drive-login-status{display:flex;align-items:center;gap:10px;padding:12px 14px}
@@ -535,4 +533,50 @@ input,select,textarea{font-size:16px!important;-webkit-text-size-adjust:100%}
 /* Nav icon/label compat */
 .nav-icon{font-size:30px;line-height:1}
 .nav-label{font-size:10px;line-height:1}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   PWA STANDALONE — full-screen optimized layout
+   Only applies when installed as PWA (add to home screen)
+   ═══════════════════════════════════════════════════════════════ */
+@media all and (display-mode: standalone) {
+
+  /* Body fills exact screen — no scrollbar, no bounce */
+  body {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  /* App fills body exactly */
+  #app {
+    width: 100%;
+    height: 100%;
+    position: static;   /* let body:fixed do the work */
+    inset: unset;
+  }
+
+  /* Bottom nav — sits flush at screen bottom */
+  /* padding-bottom pushes buttons above home indicator */
+  /* The nav background fills the entire home indicator zone */
+  #bottom-nav {
+    /* No fixed height calc — auto size from buttons + safe-area */
+    height: auto;
+    min-height: unset;
+    padding-top: 6px;
+    padding-bottom: max(env(safe-area-inset-bottom, 16px), 16px);
+  }
+
+  /* Each nav item: larger touch target in standalone */
+  .nav-btn {
+    padding: 6px 0 0;
+  }
+
+  /* FAB floats higher to clear the taller nav bar */
+  .nav-fab-circle {
+    margin-top: -28px;
+  }
+}
 
