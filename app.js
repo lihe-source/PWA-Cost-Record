@@ -1,5 +1,5 @@
 /* ─────────────────────────────────────────────────────────────
-   Cost Record PWA — app.js  V2.9
+   Cost Record PWA — app.js  V3.0
    Modules: DataStore · DriveService · CurrencyService · App
 ───────────────────────────────────────────────────────────── */
 'use strict';
@@ -187,17 +187,16 @@ class DriveService {
     this._ready = false;
     this._folderId = null;
     this._email = null;
-    this._TC = null; // token client instance (reusable)
     this._loadCachedToken();
   }
 
-  // ── Persist token in localStorage ────────────────────────────
+  // ── Token persistence ─────────────────────────────────────────
   _loadCachedToken() {
     try {
       const raw = localStorage.getItem('drive_token');
       if (raw) {
         const d = JSON.parse(raw);
-        if (d.expiry > Date.now() + 60000) {   // still valid for >1 min
+        if (d.expiry > Date.now() + 60000) {
           this.token = d.token;
           this._tokenExpiry = d.expiry;
           this._email = d.email || null;
@@ -209,7 +208,7 @@ class DriveService {
   _saveToken(token, expiresIn, email) {
     this.token = token;
     this._email = email || this._email;
-    this._tokenExpiry = Date.now() + (expiresIn || 3600) * 1000 - 60000;
+    this._tokenExpiry = Date.now() + (expiresIn || 3500) * 1000;
     try {
       localStorage.setItem('drive_token', JSON.stringify({
         token: this.token, expiry: this._tokenExpiry, email: this._email
@@ -218,57 +217,69 @@ class DriveService {
   }
 
   clearToken() {
-    this.token = null; this._tokenExpiry = 0; this._email = null;
-    this._folderId = null; this._TC = null;
+    this.token = null; this._tokenExpiry = 0;
+    this._email = null; this._folderId = null;
     try { localStorage.removeItem('drive_token'); } catch(e) {}
   }
 
   isSignedIn() { return !!this.token && Date.now() < this._tokenExpiry; }
   getEmail()   { return this._email; }
 
-  async init(clientId) {
-    if (!clientId) return;
-    this.clientId = clientId;
-    await this._loadGIS();
-    this._ready = true;
-    // Build reusable token client
-    this._TC = google.accounts.oauth2.initTokenClient({
-      client_id: clientId,
-      scope: 'https://www.googleapis.com/auth/drive.file email profile',
-      callback: () => {}   // overridden per-request
-    });
-  }
-
+  // ── Load GIS script with timeout ──────────────────────────────
   _loadGIS() {
     if (window.google?.accounts) return Promise.resolve();
-    return new Promise(resolve => {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Google 身份驗證庫載入逾時，請檢查網路連線')), 10000);
+      const done = () => { clearTimeout(timer); resolve(); };
       if (document.querySelector('script[src*="accounts.google.com/gsi"]')) {
         const wait = setInterval(() => {
-          if (window.google?.accounts) { clearInterval(wait); resolve(); }
+          if (window.google?.accounts) { clearInterval(wait); done(); }
         }, 100);
+        setTimeout(() => { clearInterval(wait); reject(new Error('GIS 載入等待逾時')); }, 10000);
         return;
       }
       const s = document.createElement('script');
       s.src = 'https://accounts.google.com/gsi/client';
-      s.onload = resolve;
+      s.onload = done;
+      s.onerror = () => { clearTimeout(timer); reject(new Error('無法載入 Google 登入庫，請確認網路連線')); };
       document.head.appendChild(s);
     });
   }
 
-  async getToken(forcePrompt = false) {
-    // Return cached token if still valid
-    if (!forcePrompt && this.isSignedIn()) return this.token;
+  async init(clientId) {
+    if (!clientId) throw new Error('請先填寫 Google Client ID');
+    this.clientId = clientId;
+    await this._loadGIS();
+    this._ready = true;
+  }
 
+  // ── Get OAuth token — with 90s timeout so buttons never stay stuck ──
+  async getToken(forcePrompt = false) {
+    if (!forcePrompt && this.isSignedIn()) return this.token;
     if (!this.clientId) throw new Error('請先在設定中填寫 Google Client ID');
     if (!this._ready) await this.init(this.clientId);
 
     return new Promise((resolve, reject) => {
+      // 90 second timeout — if OAuth popup is dismissed or blocked, reject cleanly
+      const timer = setTimeout(() => {
+        reject(new Error('登入逾時（90秒），請重試'));
+      }, 90000);
+
       const tc = google.accounts.oauth2.initTokenClient({
         client_id: this.clientId,
-        scope: 'https://www.googleapis.com/auth/drive.file email profile',
+        scope: 'https://www.googleapis.com/auth/drive.file',
         callback: async r => {
-          if (r.error) { reject(new Error(r.error)); return; }
-          // Try to get email via tokeninfo
+          clearTimeout(timer);
+          if (r.error) {
+            const msgs = {
+              'access_denied': '已拒絕授權',
+              'popup_closed_by_user': '登入視窗已關閉，請重試',
+              'popup_blocked_by_browser': '彈出視窗被封鎖，請允許後重試',
+            };
+            reject(new Error(msgs[r.error] || `授權錯誤：${r.error}`));
+            return;
+          }
+          // Fetch email from tokeninfo (best-effort)
           let email = this._email;
           try {
             const info = await fetch(
@@ -278,32 +289,51 @@ class DriveService {
           } catch(e) {}
           this._saveToken(r.access_token, r.expires_in, email);
           resolve(this.token);
+        },
+        error_callback: err => {
+          clearTimeout(timer);
+          reject(new Error(err?.message || '授權流程發生錯誤'));
         }
       });
-      // Silent if cached consent exists, prompt if forced or first time
       tc.requestAccessToken({ prompt: forcePrompt ? 'select_account' : '' });
     });
   }
 
-  async signIn() { return this.getToken(true); }
-  async signOut() { 
+  async signIn()  { return this.getToken(true); }
+  async signOut() {
     if (this.token) {
       try { google.accounts.oauth2.revoke(this.token, () => {}); } catch(e) {}
     }
     this.clearToken();
   }
 
+  // ── Drive API helpers ─────────────────────────────────────────
+  async _fetch(url, opts = {}) {
+    const token = await this.getToken();
+    const headers = { Authorization: `Bearer ${token}`, ...(opts.headers || {}) };
+    const res = await fetch(url, { ...opts, headers });
+    if (res.status === 401) {
+      // Token expired — clear and retry once with fresh token
+      this.clearToken();
+      const token2 = await this.getToken(true);
+      const headers2 = { Authorization: `Bearer ${token2}`, ...(opts.headers || {}) };
+      const res2 = await fetch(url, { ...opts, headers: headers2 });
+      if (!res2.ok) throw new Error(`Drive API ${res2.status}`);
+      return res2;
+    }
+    if (!res.ok) throw new Error(`Drive API ${res.status}`);
+    return res;
+  }
+
   async getFolderId() {
     if (this._folderId) return this._folderId;
-    const token = await this.getToken();
     const q = encodeURIComponent(`name='${DRIVE_FOLDER}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
-    const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`,
-      { headers: { Authorization: `Bearer ${token}` } });
+    const res = await this._fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`);
     const d = await res.json();
     if (d.files?.length > 0) { this._folderId = d.files[0].id; return this._folderId; }
-    const cr = await fetch('https://www.googleapis.com/drive/v3/files', {
+    const cr = await this._fetch('https://www.googleapis.com/drive/v3/files', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: DRIVE_FOLDER, mimeType: 'application/vnd.google-apps.folder' })
     });
     const nd = await cr.json();
@@ -311,42 +341,45 @@ class DriveService {
   }
 
   async listBackups() {
-    const token = await this.getToken();
     const folderId = await this.getFolderId();
     const q = encodeURIComponent(`'${folderId}' in parents and name contains 'backup' and trashed=false`);
-    const res = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=${q}&orderBy=modifiedTime desc&pageSize=5&fields=files(id,name,modifiedTime,size)`,
-      { headers: { Authorization: `Bearer ${token}` } });
-    if (!res.ok) throw new Error(`Drive API ${res.status}`);
-    const d = await res.json(); return d.files || [];
+    const res = await this._fetch(
+      `https://www.googleapis.com/drive/v3/files?q=${q}&orderBy=modifiedTime desc&pageSize=10&fields=files(id,name,modifiedTime,size)`
+    );
+    const d = await res.json();
+    return d.files || [];
   }
 
   async uploadBackup(data) {
-    const token = await this.getToken();
     const folderId = await this.getFolderId();
     const fileName = `backup-${new Date().toISOString().slice(0,19).replace(/[T:]/g,'-')}.json`;
     const content = JSON.stringify(data, null, 2);
-    const boundary = '-------cost_record_v2';
+    const boundary = '-------cost_record_boundary';
     const body = [
       `--${boundary}`,
       'Content-Type: application/json; charset=UTF-8', '',
       JSON.stringify({ name: fileName, mimeType: 'application/json', parents: [folderId] }),
       `--${boundary}`, 'Content-Type: application/json', '', content, `--${boundary}--`
     ].join('\r\n');
-    const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+    const res = await this._fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': `multipart/related; boundary=${boundary}` },
+      headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
       body
     });
-    if (!res.ok) throw new Error(`Upload failed ${res.status}`);
+    // Prune old backups — keep only 5
+    try {
+      const all = await this.listBackups();
+      if (all.length > 5) {
+        for (const f of all.slice(5)) {
+          await this._fetch(`https://www.googleapis.com/drive/v3/files/${f.id}`, { method: 'DELETE' }).catch(()=>{});
+        }
+      }
+    } catch(e) {}
     return res.json();
   }
 
   async downloadBackup(fileId) {
-    const token = await this.getToken();
-    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
-      { headers: { Authorization: `Bearer ${token}` } });
-    if (!res.ok) throw new Error(`Download failed ${res.status}`);
+    const res = await this._fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
     return res.json();
   }
 }
@@ -1520,8 +1553,9 @@ class App {
         this.toast('登入成功 ✅', 'success');
         this.closeModal(); setTimeout(() => this._openDriveSettingsPage(), 320);
       } catch(err) {
-        this.toast('登入失敗：' + err.message, 'error');
-        btn.textContent = '登入'; btn.disabled = false;
+        this.toast('❌ ' + err.message, 'error');
+        // Always reset button so user isn't stuck
+        btn.textContent = '重試登入'; btn.disabled = false;
       }
     });
     document.getElementById('drive-signout-btn')?.addEventListener('click', async () => {
@@ -1536,59 +1570,79 @@ class App {
 
   async _driveUploadFromPage() {
     const btn=document.getElementById('drive-upload-btn');
-    if(btn){btn.querySelector('span:last-child').textContent='上傳中…';btn.disabled=true;}
+    const setLabel = t => { const sp=btn?.querySelector('span:last-child'); if(sp) sp.textContent=t; };
+    if(btn){ setLabel('上傳中…'); btn.disabled=true; }
     try {
-      if(!this.drive.isSignedIn()) await this.drive.init(this.store.data.settings.googleClientId);
-      const data=this.store.export();data._exportedAt=new Date().toISOString();
+      const cid = this.store.data.settings.googleClientId;
+      if (!cid) throw new Error('請先填寫 Client ID 並儲存');
+      await this.drive.init(cid);
+      const data=this.store.export(); data._exportedAt=new Date().toISOString();
       await this.drive.uploadBackup(data);
-      this.store.data.lastSync=new Date().toLocaleString('zh-TW');this.store.save();
-      this.toast('已上傳至 Google Drive','success');
+      this.store.data.lastSync=new Date().toLocaleString('zh-TW'); this.store.save();
+      this.toast('✅ 已上傳至 Google Drive','success');
       const sub=document.querySelector('#open-drive-settings-btn .settings-card-sub');
       if(sub) sub.textContent=`上次同步：${this.store.data.lastSync}`;
-    } catch(err){this.toast('上傳失敗：'+err.message,'error');}
-    finally{if(btn){btn.querySelector('span:last-child').textContent='上傳到雲端';btn.disabled=false;}}
+      // Refresh login card
+      this.closeModal(); setTimeout(()=>this._openDriveSettingsPage(),320);
+    } catch(err){
+      this.toast('❌ ' + err.message, 'error');
+    } finally {
+      setLabel('上傳到雲端'); if(btn) btn.disabled=false;
+    }
   }
 
   async _driveListModal() {
     const btn=document.getElementById('drive-list-btn');
-    if(btn){btn.querySelector('span:last-child').textContent='載入中…';btn.disabled=true;}
+    const setLabel = t => { const sp=btn?.querySelector('span:last-child'); if(sp) sp.textContent=t; };
     const listEl=document.getElementById('drive-backup-list');
+    if(btn){ setLabel('讀取中…'); btn.disabled=true; }
     try {
-      if(!this.drive.isSignedIn()) await this.drive.init(this.store.data.settings.googleClientId);
-      const files=await this.drive.listBackups();
-      if(!listEl)return;
-      if(!files.length){listEl.innerHTML='<p style="font-size:11px;color:var(--text3);text-align:center;padding:16px;">尚無雲端備份</p>';return;}
-      // Show selection UI like reference image
-      // Fetch expense count for each backup
-      const backupMeta = await Promise.all(files.slice(0,5).map(async(f,i) => {
-        try {
-          const d = await this.drive.downloadBackup(f.id);
-          return { ...f, expCount: (d.expenses||[]).length, catCount: (d.categories||[]).length };
-        } catch { return { ...f, expCount: '?', catCount: '?' }; }
-      }));
+      const cid = this.store.data.settings.googleClientId;
+      if (!cid) throw new Error('請先填寫 Client ID 並儲存');
+      await this.drive.init(cid);
+      const files = await this.drive.listBackups();
+      if(!listEl) return;
+      if(!files.length){
+        listEl.innerHTML='<p style="font-size:12px;color:var(--text3);text-align:center;padding:20px;">尚無雲端備份</p>';
+        return;
+      }
+      // Show file list immediately — no pre-download of contents
+      const fmtSize = b => b > 1024*1024 ? (b/1024/1024).toFixed(1)+'MB' : b > 1024 ? (b/1024).toFixed(0)+'KB' : b+'B';
       listEl.innerHTML=`
-        <div class="drive-list-title">選擇備份版本</div>
-        <div class="drive-list-sub">最多保留 5 份備份，每次上傳自動建立新版本。</div>
-        ${backupMeta.map((f,i)=>`
-          <div class="drive-version-item" data-file-id="${f.id}">
+        <div class="drive-list-title" style="font-size:12px;color:var(--text2);margin-bottom:6px;">點擊選擇要還原的版本</div>
+        ${files.map((f,i)=>`
+          <div class="drive-version-item" data-file-id="${f.id}" style="cursor:pointer;">
             <div style="flex:1">
-              <div class="drive-version-time">${new Date(f.modifiedTime).toLocaleString('zh-TW')}${i===0?'<span class="drive-version-badge" style="margin-left:6px">最新</span>':''}</div>
-              <div class="drive-version-info">支出 ${f.expCount} 筆 · 分類 ${f.catCount} 個</div>
+              <div class="drive-version-time">${new Date(f.modifiedTime).toLocaleString('zh-TW')}
+                ${i===0?'<span class="drive-version-badge" style="margin-left:6px;background:var(--green);color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;">最新</span>':''}
+              </div>
+              <div class="drive-version-info">${f.size ? fmtSize(+f.size) : ''}</div>
             </div>
+            <span style="font-size:18px;color:var(--text3)">›</span>
           </div>`).join('')}`;
       listEl.querySelectorAll('.drive-version-item').forEach(item=>{
-        item.addEventListener('click',async()=>{
-          if(!confirm(`確定從此備份還原？本機資料將被覆蓋。`))return;
+        item.addEventListener('click', async () => {
+          if(!confirm('\u78ba\u5b9a\u5f9e\u6b64\u5099\u4efd\u9084\u539f\uff1f\n\u672c\u6a5f\u73fe\u6709\u8cc7\u6599\u5c07\u88ab\u8986\u84cb\u3002')) return;
           item.style.opacity='0.5';
+          const origText = item.querySelector('.drive-version-time')?.textContent || '';
           try {
-            const data=await this.drive.downloadBackup(item.dataset.fileId);
-            this.store.import(data);this.toast('✅ 已從 Drive 匯入','success');
+            this.toast('下載中，請稍候…','info');
+            const data = await this.drive.downloadBackup(item.dataset.fileId);
+            this.store.import(data);
+            this.toast('✅ 已從 Drive 還原','success');
             this.closeModal(()=>this.renderView());
-          } catch(err){this.toast('匯入失敗：'+err.message,'error');item.style.opacity='';}
+          } catch(err){
+            this.toast('❌ 還原失敗：'+err.message,'error');
+            item.style.opacity='';
+          }
         });
       });
-    } catch(err){this.toast('載入失敗：'+err.message,'error');}
-    finally{if(btn){btn.querySelector('span:last-child').textContent='從雲端下載';btn.disabled=false;}}
+    } catch(err){
+      this.toast('❌ ' + err.message, 'error');
+      if(listEl) listEl.innerHTML=`<p style="font-size:12px;color:var(--red);text-align:center;padding:16px;">${err.message}</p>`;
+    } finally {
+      setLabel('從雲端下載'); if(btn) btn.disabled=false;
+    }
   }
 
   _openLocalBackupSheet() {
