@@ -608,7 +608,8 @@ class App {
     this._swipeStartY = null;
     this._swipeCooling = false;
     // Default is light; only dark when explicitly saved as 'dark'
-    this._isDarkMode = localStorage.getItem('theme') === 'dark';
+    // Theme already applied by inline <script> in <head>; read actual DOM state
+    this._isDarkMode = !document.body.classList.contains('light-mode');
     this._currency = this.store.data.currency || 'TWD';
     this._liveRates = null; // populated async after init
   }
@@ -648,7 +649,12 @@ class App {
       if(e.target.closest('#nav-add-btn')) this.openExpenseModal(null);
     });
     // Theme
-    this._applyTheme(this._isDarkMode);
+    // Sync toggle button icon with current theme (already applied by inline <script>)
+    const _syncThemeIcon = () => {
+      const btn = document.getElementById('theme-toggle-btn');
+      if(btn) btn.textContent = this._isDarkMode ? '🌙' : '☀️';
+    };
+    _syncThemeIcon();
     document.getElementById('theme-toggle-btn')?.addEventListener('click',()=>{
       this._isDarkMode=!this._isDarkMode;
       localStorage.setItem('theme',this._isDarkMode?'dark':'light');

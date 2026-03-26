@@ -1,5 +1,5 @@
-/* Cost Record PWA — styles.css V3.2 */
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=DM+Mono:wght@400;500&display=swap');
+/* Cost Record PWA — styles.css V3.8 */
+/* Google Fonts loaded async via <link> in index.html for instant render */
 :root{
   --bg:#181825;--bg2:#1e1e2e;--bg3:#252538;--bg4:#2e2e45;
   --card:#1e1e2e;--card2:#252538;
@@ -11,7 +11,7 @@
   --text:#eeeef8;--text2:#8080a0;--text3:#50506a;
   --radius:14px;--radius-sm:9px;--radius-xs:6px;
   --nav-h:84px;--header-h:50px;
-  --font-main:'Noto Sans TC',sans-serif;--font-mono:'DM Mono',monospace;
+  --font-main:'Noto Sans TC',system-ui,-apple-system,sans-serif;--font-mono:'DM Mono','Courier New',monospace;
 }
 body.light-mode{
   --bg:#f5f5f7;--bg2:#ffffff;--bg3:#eaeaf0;--bg4:#dddde8;
