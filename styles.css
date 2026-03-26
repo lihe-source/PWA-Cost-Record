@@ -608,5 +608,6 @@ input,select,textarea{font-size:16px!important;-webkit-text-size-adjust:100%}
 /* Category sort-mode ▲▼ buttons */
 .cat-sort-arrows{display:flex;flex-direction:column;gap:3px;margin-right:8px;flex-shrink:0}
 .cat-order-btn{background:var(--bg3);border:1px solid var(--border2);border-radius:7px;width:36px;height:30px;cursor:pointer;font-size:15px;color:var(--amber);display:flex;align-items:center;justify-content:center;transition:background .15s,opacity .15s;font-family:var(--font-main);padding:0}
+.cat2-section{will-change:transform;position:relative}
 .cat-order-btn:active{background:var(--amber-dim);transform:scale(.93)}
 .cat-order-btn:disabled{opacity:.25;cursor:default}

@@ -1459,19 +1459,49 @@ class App {
         </div>` : ''}
       </div>`).join('');
 
-    // ── bind sort ▲▼ buttons — in-place re-render, NO modal close/reopen ─────
+    // ── bind sort ▲▼ buttons — animate swap then re-render in-place ──────────
     const bindSortBtns = () => {
       document.querySelectorAll('.cat-order-btn').forEach(btn=>{
         btn.addEventListener('click', e=>{
           e.stopPropagation();
           const ci=+btn.dataset.ci, dir=btn.dataset.order;
-          if(dir==='up' && ci>0)           { [cats[ci-1],cats[ci]]=[cats[ci],cats[ci-1]]; }
-          else if(dir==='down' && ci<cats.length-1) { [cats[ci],cats[ci+1]]=[cats[ci+1],cats[ci]]; }
-          else return; // edge: nothing to do
-          this.store.save();
-          // Re-render only the list in-place — no modal flash
+          const swapWith = dir==='up' ? ci-1 : ci+1;
+          if(swapWith < 0 || swapWith >= cats.length) return;
+
           const listEl = document.getElementById('cat-list');
-          if(listEl){ listEl.innerHTML = buildCatList(true); bindSortBtns(); }
+          if(!listEl) return;
+          const sections = [...listEl.querySelectorAll('.cat2-section')];
+          const elA = sections[ci];       // element being moved
+          const elB = sections[swapWith]; // element it swaps with
+          if(!elA || !elB) return;
+
+          // Measure distance to slide
+          const hA = elA.getBoundingClientRect().height;
+          const hB = elB.getBoundingClientRect().height;
+          const moveA = dir==='up' ? -hB : hB;   // elA slides up or down
+          const moveB = dir==='up' ?  hA : -hA;  // elB slides the opposite way
+
+          // Lock dimensions, disable further clicks during animation
+          listEl.style.pointerEvents = 'none';
+
+          // Apply slide transforms
+          elA.style.transition = 'transform 0.22s cubic-bezier(.4,0,.2,1)';
+          elB.style.transition = 'transform 0.22s cubic-bezier(.4,0,.2,1)';
+          elA.style.transform  = `translateY(${moveA}px)`;
+          elB.style.transform  = `translateY(${moveB}px)`;
+
+          // After animation, swap in data and re-render
+          setTimeout(() => {
+            elA.style.transition = '';
+            elB.style.transition = '';
+            elA.style.transform  = '';
+            elB.style.transform  = '';
+            [cats[ci], cats[swapWith]] = [cats[swapWith], cats[ci]];
+            this.store.save();
+            listEl.innerHTML = buildCatList(true);
+            listEl.style.pointerEvents = '';
+            bindSortBtns();
+          }, 230);
         });
       });
     };
