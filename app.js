@@ -1420,81 +1420,113 @@ class App {
     const content=document.getElementById('modal-content');
     const backdrop=document.getElementById('modal-backdrop');
     content.classList.remove('sheet-mode');
+
+    // ── renders just the cat-list HTML (reused for in-place refresh) ──────────
+    const buildCatList = (sm) => cats.map((cat,ci)=>`
+      <div class="cat2-section" data-ci="${ci}">
+        <div class="cat2-section-header">
+          ${sm ? `
+            <div class="cat-sort-arrows">
+              <button class="cat-order-btn" data-order="up"   data-ci="${ci}" ${ci===0?'disabled':''}>▲</button>
+              <button class="cat-order-btn" data-order="down" data-ci="${ci}" ${ci===cats.length-1?'disabled':''}>▼</button>
+            </div>
+            <span class="cat2-section-icon">${this.catIcon(cat.name)}</span>
+            <span class="cat2-section-name">${cat.name}</span>
+          ` : `
+            <span class="cat2-section-icon" data-action="icon-cat" data-ci="${ci}">${this.catIcon(cat.name)}</span>
+            <span class="cat2-section-name">${cat.name}</span>
+            <div style="display:flex;gap:4px;margin-left:auto;">
+              <button class="cat-action-btn" data-action="rename-cat" data-ci="${ci}">改名</button>
+              <button class="cat-action-btn danger" data-action="del-cat" data-ci="${ci}">刪除</button>
+            </div>
+          `}
+        </div>
+        ${!sm ? `
+        <div class="cat2-sub-list">
+          ${(cat.subs||[]).map((sub,si)=>`
+            <div class="cat2-sub-item">
+              <span class="cat2-sub-icon" data-action="icon-sub" data-ci="${ci}" data-si="${si}">${this.catIcon(sub)}</span>
+              <span class="cat2-sub-name">${subName(sub)}</span>
+              <div style="display:flex;gap:4px;margin-left:auto;">
+                <button class="cat-action-btn" data-action="rename-sub" data-ci="${ci}" data-si="${si}">改名</button>
+                <button class="cat-action-btn danger" data-action="del-sub" data-ci="${ci}" data-si="${si}">刪除</button>
+              </div>
+            </div>`).join('')}
+          <div class="cat2-add-row">
+            <input class="cat-add-input" id="sub-input-${ci}" placeholder="新增小分類…">
+            <button class="btn-primary" data-action="add-sub" data-ci="${ci}" style="padding:5px 11px;font-size:11px;">新增</button>
+          </div>
+        </div>` : ''}
+      </div>`).join('');
+
+    // ── bind sort ▲▼ buttons — in-place re-render, NO modal close/reopen ─────
+    const bindSortBtns = () => {
+      document.querySelectorAll('.cat-order-btn').forEach(btn=>{
+        btn.addEventListener('click', e=>{
+          e.stopPropagation();
+          const ci=+btn.dataset.ci, dir=btn.dataset.order;
+          if(dir==='up' && ci>0)           { [cats[ci-1],cats[ci]]=[cats[ci],cats[ci-1]]; }
+          else if(dir==='down' && ci<cats.length-1) { [cats[ci],cats[ci+1]]=[cats[ci+1],cats[ci]]; }
+          else return; // edge: nothing to do
+          this.store.save();
+          // Re-render only the list in-place — no modal flash
+          const listEl = document.getElementById('cat-list');
+          if(listEl){ listEl.innerHTML = buildCatList(true); bindSortBtns(); }
+        });
+      });
+    };
+
+    // ── full modal HTML ───────────────────────────────────────────────────────
     content.innerHTML=`
       <div class="modal-topbar">
         <button class="modal-topbar-btn" id="modal-close-btn">✕</button>
         <div class="modal-topbar-title">分類管理</div>
-        <div style="display:flex;gap:6px;">
+        <div style="display:flex;gap:6px;align-items:center;">
           <button class="modal-topbar-btn${sortMode?' confirm':''}" id="cat-sort-mode-btn" title="調整順序" style="font-size:20px;">⇅</button>
-          <button class="modal-topbar-btn confirm" id="cat-add-parent-btn" title="新增大分類" ${sortMode?'style="display:none"':''}>＋</button>
+          ${!sortMode?'<button class="modal-topbar-btn confirm" id="cat-add-parent-btn">＋</button>':''}
         </div>
       </div>
       <div class="modal-body" style="padding:8px 0;">
-        ${sortMode ? '<div style="font-size:11px;color:var(--amber);text-align:center;padding:4px 0 8px;font-weight:600;">▲▼ 排序模式 — 點擊箭頭調整大分類順序</div>' : ''}
-        <div id="cat-list">
-        ${cats.map((cat,ci)=>`
-          <div class="cat2-section" data-ci="${ci}">
-            <div class="cat2-section-header">
-              ${sortMode ? `
-                <div style="display:flex;flex-direction:column;gap:2px;margin-right:6px;">
-                  <button class="cat-order-btn" data-order="up" data-ci="${ci}" ${ci===0?'disabled':''} style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;width:32px;height:28px;cursor:pointer;font-size:14px;color:var(--amber);display:flex;align-items:center;justify-content:center;${ci===0?'opacity:.3;':''}" >▲</button>
-                  <button class="cat-order-btn" data-order="down" data-ci="${ci}" ${ci===cats.length-1?'disabled':''} style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;width:32px;height:28px;cursor:pointer;font-size:14px;color:var(--amber);display:flex;align-items:center;justify-content:center;${ci===cats.length-1?'opacity:.3;':''}" >▼</button>
-                </div>
-                <span class="cat2-section-icon">${this.catIcon(cat.name)}</span>
-                <span class="cat2-section-name">${cat.name}</span>
-              ` : `
-                <span class="cat2-section-icon" data-action="icon-cat" data-ci="${ci}">${this.catIcon(cat.name)}</span>
-                <span class="cat2-section-name">${cat.name}</span>
-                <div style="display:flex;gap:4px;margin-left:auto;">
-                  <button class="cat-action-btn" data-action="rename-cat" data-ci="${ci}">改名</button>
-                  <button class="cat-action-btn danger" data-action="del-cat" data-ci="${ci}">刪除</button>
-                </div>
-              `}
-            </div>
-            ${!sortMode ? `
-            <div class="cat2-sub-list">
-              ${(cat.subs||[]).map((sub,si)=>`
-                <div class="cat2-sub-item">
-                  <span class="cat2-sub-icon" data-action="icon-sub" data-ci="${ci}" data-si="${si}">${this.catIcon(sub)}</span>
-                  <span class="cat2-sub-name">${subName(sub)}</span>
-                  <div style="display:flex;gap:4px;margin-left:auto;">
-                    <button class="cat-action-btn" data-action="rename-sub" data-ci="${ci}" data-si="${si}">改名</button>
-                    <button class="cat-action-btn danger" data-action="del-sub" data-ci="${ci}" data-si="${si}">刪除</button>
-                  </div>
-                </div>`).join('')}
-              <div class="cat2-add-row">
-                <input class="cat-add-input" id="sub-input-${ci}" placeholder="新增小分類…">
-                <button class="btn-primary" data-action="add-sub" data-ci="${ci}" style="padding:5px 11px;font-size:11px;">新增</button>
-              </div>
-            </div>` : ''}
-          </div>`).join('')}
-        </div>
+        ${sortMode?'<div style="font-size:11px;color:var(--amber);text-align:center;padding:4px 0 8px;font-weight:600;">排序模式：點 ▲▼ 移動，再按 ⇅ 完成</div>':''}
+        <div id="cat-list">${buildCatList(sortMode)}</div>
       </div>`;
-    overlay.classList.remove('hidden');backdrop.classList.add('visible');
+
+    overlay.classList.remove('hidden'); backdrop.classList.add('visible');
     requestAnimationFrame(()=>content.classList.add('slide-in'));
+
+    // ── event bindings ────────────────────────────────────────────────────────
     document.getElementById('modal-close-btn')?.addEventListener('click',()=>this.closeModal());
     backdrop.addEventListener('click',()=>this.closeModal(),{once:true});
-    // Sort mode toggle
+
+    // Sort-mode toggle: just re-init the whole page in sort/normal mode
     document.getElementById('cat-sort-mode-btn')?.addEventListener('click',()=>{
-      this.closeModal();setTimeout(()=>this._openCategoriesPage(!sortMode),50);
+      // Re-render in-place without close/reopen
+      const newSortMode = !sortMode;
+      sortMode = newSortMode;
+      const listEl = document.getElementById('cat-list');
+      const btnEl  = document.getElementById('cat-sort-mode-btn');
+      const addBtn = document.getElementById('cat-add-parent-btn');
+      const hint   = listEl?.previousElementSibling;
+
+      // Update hint text
+      if(hint && hint.style) hint.style.display = newSortMode ? '' : 'none';
+      if(listEl) listEl.innerHTML = buildCatList(newSortMode);
+      if(btnEl)  btnEl.classList.toggle('confirm', newSortMode);
+      if(addBtn) addBtn.style.display = newSortMode ? 'none' : '';
+
+      if(newSortMode) bindSortBtns();
+      else            bindActionBtns();
     });
-    // Sort ▲▼ buttons
-    document.querySelectorAll('.cat-order-btn').forEach(btn=>{
-      btn.addEventListener('click',e=>{
-        e.stopPropagation();
-        const ci=+btn.dataset.ci, dir=btn.dataset.order;
-        if(dir==='up'&&ci>0){
-          [cats[ci-1],cats[ci]]=[cats[ci],cats[ci-1]];
-        } else if(dir==='down'&&ci<cats.length-1){
-          [cats[ci],cats[ci+1]]=[cats[ci+1],cats[ci]];
-        }
-        this.store.save();
-        this.closeModal();setTimeout(()=>this._openCategoriesPage(true),50);
-      });
-    });
-    if(!sortMode){
+
+    const bindActionBtns = () => {
       document.getElementById('cat-add-parent-btn')?.addEventListener('click',()=>{
-        this._promptCatName('新增大分類','',name=>{this.store.data.categories.push({name,icon:'📦',subs:[]});this.store.save();this.closeModal();setTimeout(()=>this._openCategoriesPage(),320);this.toast('已新增','success');});
+        this._promptCatName('新增大分類','',name=>{
+          this.store.data.categories.push({name,icon:'📦',subs:[]});
+          this.store.save();
+          this.closeModal();
+          setTimeout(()=>this._openCategoriesPage(),320);
+          this.toast('已新增','success');
+        });
       });
       document.querySelectorAll('[data-action]').forEach(btn=>{
         btn.addEventListener('click',e=>{
@@ -1503,7 +1535,10 @@ class App {
           this._handleCatAction(action,+ci,si!==undefined?+si:null);
         });
       });
-    }
+    };
+
+    if(sortMode)  bindSortBtns();
+    else          bindActionBtns();
   }
   _openIconPicker(title, currentIcon, onSelect) {
     this._openSheet(`
