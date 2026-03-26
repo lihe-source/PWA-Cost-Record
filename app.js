@@ -698,38 +698,7 @@ class App {
     } catch(e) { /* offline, ignore */ }
   }
 
-  _setupGlobalSwipeBack() {
-    let sx=null, sy=null, dx=0, dragging=false;
-    document.addEventListener('touchstart', e=>{
-      const overlay=document.getElementById('modal-overlay');
-      if(!overlay||overlay.classList.contains('hidden')) return;
-      const content=document.getElementById('modal-content');
-      if(content&&content.classList.contains('sheet-mode')) return;
-      sx=e.touches[0].clientX; sy=e.touches[0].clientY; dx=0; dragging=false;
-    },{passive:true});
-    document.addEventListener('touchmove', e=>{
-      if(sx===null) return;
-      const content=document.getElementById('modal-content');
-      if(!content) return;
-      dx=e.touches[0].clientX-sx;
-      const dy=e.touches[0].clientY-sy;
-      if(!dragging && Math.abs(dx)>Math.abs(dy) && dx>8) dragging=true;
-      if(dragging && dx>0){
-        content.style.transform=`translateX(${Math.min(dx,window.innerWidth)}px)`;
-        content.style.transition='none';
-      }
-    },{passive:true});
-    document.addEventListener('touchend', ()=>{
-      if(sx===null) return;
-      const content=document.getElementById('modal-content');
-      if(content){
-        content.style.transition='';
-        if(dragging && dx>window.innerWidth*0.35) this.closeModal();
-        else content.style.transform=content.classList.contains('slide-in')?'translateX(0)':'';
-      }
-      sx=null; sy=null; dx=0; dragging=false;
-    },{passive:true});
-  }
+  // _setupGlobalSwipeBack: implemented below (V3.6)
 
   _initCatDragOrder() { /* replaced by sort-mode UI */ }
   renderView() {
@@ -2154,36 +2123,60 @@ class App {
   }
 
   _setupGlobalSwipeBack() {
-    let sx=null, sy=null, dx=0, dragging=false;
-    document.addEventListener('touchstart', e=>{
-      const overlay=document.getElementById('modal-overlay');
-      if(!overlay||overlay.classList.contains('hidden')) return;
-      const content=document.getElementById('modal-content');
-      if(content&&content.classList.contains('sheet-mode')) return;
-      sx=e.touches[0].clientX; sy=e.touches[0].clientY; dx=0; dragging=false;
-    },{passive:true});
-    document.addEventListener('touchmove', e=>{
-      if(sx===null) return;
-      const content=document.getElementById('modal-content');
-      if(!content) return;
-      const curX=e.touches[0].clientX, curY=e.touches[0].clientY;
-      dx=curX-sx;
-      if(!dragging&&Math.abs(dx)>Math.abs(curY-sy)&&dx>8) dragging=true;
-      if(dragging&&dx>0){
-        content.style.transform=`translateX(${Math.min(dx,window.innerWidth)}px)`;
-        content.style.transition='none';
+    let sx=null, sy=null, dx=0, dy=0, phase='idle';
+    // phase: 'idle' | 'deciding' | 'swiping-h' | 'scrolling-v'
+
+    const onStart = e => {
+      const overlay = document.getElementById('modal-overlay');
+      if (!overlay || overlay.classList.contains('hidden')) return;
+      const content = document.getElementById('modal-content');
+      if (!content || content.classList.contains('sheet-mode')) return;
+      sx=e.touches[0].clientX; sy=e.touches[0].clientY; dx=0; dy=0; phase='deciding';
+    };
+
+    const onMove = e => {
+      if (phase === 'idle' || phase === 'scrolling-v') return;
+      const content = document.getElementById('modal-content');
+      if (!content) return;
+      dx = e.touches[0].clientX - sx;
+      dy = e.touches[0].clientY - sy;
+      if (phase === 'deciding') {
+        if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return; // not enough movement yet
+        // Only start horizontal swipe if clearly more horizontal AND moving right
+        if (Math.abs(dx) > Math.abs(dy) * 1.5 && dx > 0) {
+          phase = 'swiping-h';
+        } else {
+          phase = 'scrolling-v'; // let vertical scroll through unobstructed
+          return;
+        }
       }
-    },{passive:true});
-    document.addEventListener('touchend', ()=>{
-      if(sx===null) return;
-      const content=document.getElementById('modal-content');
-      if(content){
-        content.style.transition='';
-        if(dragging&&dx>window.innerWidth*0.35) this.closeModal();
-        else content.style.transform=content.classList.contains('slide-in')?'translateX(0)':'';
+      // phase === 'swiping-h' — follow finger
+      if (dx > 0) {
+        e.preventDefault(); // prevent scroll while we're taking over
+        content.style.transform = `translateX(${Math.min(dx, window.innerWidth)}px)`;
+        content.style.transition = 'none';
       }
-      sx=null; sy=null; dx=0; dragging=false;
-    },{passive:true});
+    };
+
+    const onEnd = () => {
+      if (phase === 'swiping-h') {
+        const content = document.getElementById('modal-content');
+        if (content) {
+          content.style.transition = '';
+          if (dx > window.innerWidth * 0.35) {
+            this.closeModal();
+          } else {
+            content.style.transform = content.classList.contains('slide-in') ? 'translateX(0)' : '';
+          }
+        }
+      }
+      sx=null; sy=null; dx=0; dy=0; phase='idle';
+    };
+
+    // passive:false on touchmove so we can call preventDefault when needed
+    document.addEventListener('touchstart', onStart, {passive:true});
+    document.addEventListener('touchmove',  onMove,  {passive:false});
+    document.addEventListener('touchend',   onEnd,   {passive:true});
   }
 
   closeModal(cb) {

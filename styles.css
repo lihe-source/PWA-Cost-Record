@@ -225,7 +225,7 @@ input,select,textarea{font-size:16px!important;-webkit-text-size-adjust:100%}
 .modal-title{font-size:15px;font-weight:700}
 .modal-close{background:var(--bg3);border:none;border-radius:10px;color:var(--text2);cursor:pointer;font-size:18px;width:44px;height:44px;display:flex;align-items:center;justify-content:center;transition:color .2s}
 .modal-close:hover{color:var(--text)}
-.modal-body{flex:1;overflow-y:auto;padding:12px 14px 0;display:flex;flex-direction:column;gap:10px;min-height:0;overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch}
+.modal-body{flex:1;overflow-y:auto;padding:12px 14px 0;display:flex;flex-direction:column;gap:10px;min-height:0;overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y}
 .modal-body::-webkit-scrollbar{width:2px}
 .modal-body::-webkit-scrollbar-thumb{background:var(--bg4)}
 .modal-body-scroll{max-height:60dvh;overflow-y:auto;padding:10px 14px;display:flex;flex-direction:column;gap:9px}
@@ -581,7 +581,7 @@ input,select,textarea{font-size:16px!important;-webkit-text-size-adjust:100%}
 }
 
 /* Category drag-to-reorder */
-.cat2-section{touch-action:none}
+/* touch-action:none removed — was blocking scroll */
 .cat2-section.dragging{opacity:.5;background:var(--bg3)}
 .cat2-section.drag-over{border-top:2px solid var(--amber)}
 .cat-drag-handle{cursor:grab;font-size:20px;color:var(--text3);padding:0 8px;flex-shrink:0;touch-action:none;user-select:none;-webkit-user-select:none}
@@ -598,7 +598,7 @@ input,select,textarea{font-size:16px!important;-webkit-text-size-adjust:100%}
 .sub-drag-handle:active{cursor:grabbing}
 
 /* Category management page — list must scroll within modal-body */
-#cat-list{display:flex;flex-direction:column;gap:0;overflow-y:auto;flex:1}
+#cat-list{display:flex;flex-direction:column;gap:0}
 .cat2-section{border-bottom:1px solid var(--border)}
 
 /* Sort mode order buttons */
