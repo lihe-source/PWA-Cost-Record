@@ -1,5 +1,5 @@
 /* ─────────────────────────────────────────────────────────────
-   Cost Record PWA — app.js  V2.6
+   Cost Record PWA — app.js  V2.7
    Modules: DataStore · DriveService · CurrencyService · App
 ───────────────────────────────────────────────────────────── */
 'use strict';
