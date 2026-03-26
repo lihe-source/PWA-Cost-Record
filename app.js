@@ -1885,6 +1885,9 @@ class App {
     const content=document.getElementById('modal-content');
     const backdrop=document.getElementById('modal-backdrop');
     content.classList.remove('sheet-mode');
+    content.classList.remove('slide-in');
+    if(this._closeTimer){clearTimeout(this._closeTimer);this._closeTimer=null;}
+    this._modalGen=(this._modalGen||0)+1;
     content.style.transform=''; content.style.transition=''; content.style.opacity='';
     content.innerHTML=`
       <div class="modal-topbar">
@@ -1949,6 +1952,9 @@ class App {
     const content=document.getElementById('modal-content');
     const backdrop=document.getElementById('modal-backdrop');
     content.classList.remove('sheet-mode');
+    content.classList.remove('slide-in');
+    if(this._closeTimer){clearTimeout(this._closeTimer);this._closeTimer=null;}
+    this._modalGen=(this._modalGen||0)+1;
     content.style.transform=''; content.style.transition=''; content.style.opacity='';
     content.innerHTML=`
       <div class="modal-topbar">
@@ -2062,6 +2068,9 @@ class App {
     const content=document.getElementById('modal-content');
     const backdrop=document.getElementById('modal-backdrop');
     content.classList.remove('sheet-mode');
+    content.classList.remove('slide-in');
+    if(this._closeTimer){clearTimeout(this._closeTimer);this._closeTimer=null;}
+    this._modalGen=(this._modalGen||0)+1;
     content.style.transform=''; content.style.transition=''; content.style.opacity='';
     content.innerHTML=`
       <div class="modal-topbar">
@@ -2302,18 +2311,22 @@ class App {
     const overlay=document.getElementById('modal-overlay');
     const backdrop=document.getElementById('modal-backdrop');
     if(!content) { if(cb) cb(); return; }
-    // Always reset transform/transition — swipe-back may have left a residual value
-    content.style.transform = '';
-    content.style.transition = '';
-    content.style.opacity = '';
+    // Cancel any in-flight close timer from a previous call
+    if(this._closeTimer) { clearTimeout(this._closeTimer); this._closeTimer=null; }
+    // Increment generation so the timer below knows if a NEW modal opened before it fires
+    this._modalGen = (this._modalGen||0) + 1;
+    const myGen = this._modalGen;
+    // Reset all residual styles immediately
+    content.style.transform=''; content.style.transition=''; content.style.opacity='';
     content.classList.remove('slide-in');
     backdrop.classList.remove('visible');
-    setTimeout(()=>{
+    this._closeTimer = setTimeout(()=>{
+      this._closeTimer = null;
+      // If a new modal was opened in the meantime (higher gen), don't destroy it
+      if(this._modalGen !== myGen) return;
       overlay.classList.add('hidden');
       content.innerHTML='';
-      content.style.transform='';
-      content.style.transition='';
-      content.style.opacity='';
+      content.style.transform=''; content.style.transition=''; content.style.opacity='';
       content.classList.remove('sheet-mode');
       this._editId=null;
       if(cb) cb();
@@ -2393,9 +2406,19 @@ class App {
     const overlay=document.getElementById('modal-overlay');
     const content=document.getElementById('modal-content');
     const backdrop=document.getElementById('modal-backdrop');
+    // Cancel any pending close timer — we're opening a new modal now
+    if(this._closeTimer) { clearTimeout(this._closeTimer); this._closeTimer=null; }
+    this._modalGen = (this._modalGen||0) + 1; // invalidate any stale timer
+    // Full reset before switching to sheet layout
+    content.classList.remove('slide-in');
     content.style.transform=''; content.style.transition=''; content.style.opacity='';
-    content.style.transform=''; content.style.transition=''; content.style.opacity=''; content.classList.add('sheet-mode');content.innerHTML=html;
-    overlay.classList.remove('hidden');backdrop.classList.add('visible');
+    content.classList.remove('sheet-mode');
+    // Force a reflow so the browser registers the style reset before we add sheet-mode
+    void content.offsetHeight;
+    content.classList.add('sheet-mode');
+    content.innerHTML=html;
+    overlay.classList.remove('hidden');
+    backdrop.classList.add('visible');
     requestAnimationFrame(()=>content.classList.add('slide-in'));
     ['modal-close-btn','modal-cancel-btn'].forEach(id=>document.getElementById(id)?.addEventListener('click',()=>this.closeModal()));
     backdrop.addEventListener('click',e=>{if(e.target===backdrop)this.closeModal();},{once:true});

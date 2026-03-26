@@ -42,6 +42,10 @@
   #modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:100;opacity:0;pointer-events:none;transition:opacity .25s}
   #modal-backdrop.visible{opacity:1;pointer-events:all}
   #modal-content{position:fixed;inset:0;max-width:430px;margin:0 auto;z-index:101;display:flex;flex-direction:column;transform:translateX(105%);transition:transform .28s cubic-bezier(.4,0,.2,1);max-height:100dvh;overflow:hidden;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);background:inherit}
+
+  /* Sheet modal critical CSS */
+  #modal-content.sheet-mode{position:fixed!important;top:auto!important;right:0!important;bottom:0!important;left:0!important;width:100%!important;border-radius:14px 14px 0 0;max-height:88dvh;transform:translateY(105%);transition:transform .28s cubic-bezier(.4,0,.2,1);padding-top:0;overflow:hidden}
+  #modal-content.sheet-mode.slide-in{transform:translateY(0)!important}
   </style>
   <!-- Apply saved theme BEFORE first paint to prevent flash -->
   <script>
@@ -62,7 +66,7 @@
     <div class="header-right">
       <button id="currency-btn" class="header-btn">TWD</button>
       <button id="theme-toggle-btn" aria-label="切換主題">🌙</button>
-      <span id="version-badge">V4.0</span>
+      <span id="version-badge">V4.1</span>
     </div>
   </header>
   <main id="main-content">
