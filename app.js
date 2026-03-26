@@ -1,5 +1,5 @@
 /* ─────────────────────────────────────────────────────────────
-   Cost Record PWA — app.js  V2.0
+   Cost Record PWA — app.js  V2.1
    Modules: DataStore · DriveService · CurrencyService · App
 ───────────────────────────────────────────────────────────── */
 'use strict';
@@ -10,13 +10,7 @@
 const STORAGE_KEY   = 'cost_record_v1';
 const DRIVE_FOLDER  = '#PWA-Cost-Record';
 
-const CURRENCIES = {
-  TWD: { symbol: '$', name: '台幣', flag: '🇹🇼' },
-  JPY: { symbol: '¥', name: '日幣', flag: '🇯🇵' },
-  CNY: { symbol: '¥', name: '人民幣', flag: '🇨🇳' },
-  EUR: { symbol: '€', name: '歐元', flag: '🇪🇺' },
-  USD: { symbol: '$', name: '美金', flag: '🇺🇸' }
-};
+// CURRENCIES defined below
 
 const DEFAULT_CATEGORIES = [
   { name:'飲食',  icon:'🍽️', subs:['早餐','午餐','晚餐','點心','飲料','宵夜','水果','酒類'] },
@@ -72,18 +66,6 @@ const CAT_ICONS = {
 };
 
 // Available icons for icon picker
-const ICON_PICKER_LIST = [
-  '🍽️','🍳','🍱','🍜','🧁','🧋','🍺','🍎','🌙','🍔','🍕','🍣','☕',
-  '🚗','🚕','🚆','✈️','🏍️','🚲','⛽','🅿️','🚢','🚌',
-  '🛍️','🛒','👗','👟','💻','💄','🎁','⌚','👜','👒',
-  '🏠','🛋️','📺','🧴','⚡','💧','📶','🔥','🏗️','🪴',
-  '🎮','🎬','🎥','⚽','🎳','🎡','🎯','🎰','🎪','🏊',
-  '📚','📖','📝','📓','✏️','🎓','🔬','🖥️',
-  '🏥','💊','🌿','🦷','🩺','🩹','💉',
-  '👤','🛡️','📋','💇','❤️','📞','👥',
-  '👨‍👩‍👧‍👦','🎨','🧸','🧧','💒',
-  '🌟','💰','🏦','💳','📊','🎉','🌈','⭐','🔑','🎵'
-];
 
 const GEMINI_MODELS = ['gemini-1.5-flash','gemini-1.5-pro','gemini-2.0-flash','gemini-2.0-pro'];
 
@@ -364,76 +346,6 @@ class CsvInvoiceParser {
 // UTILITY HELPERS
 // ══════════════════════════════════════════════════════════════
 const fmt = {
-  money:(n,cur='TWD')=>{const sym=CURRENCIES[cur]?.symbol||'$';return `${sym}${Number(n||0).toLocaleString('zh-TW')}`;},
-  date:d=>{if(!d)return '';const[y,m,day]=d.split('-');return`${y}/${m}/${day}`;},
-  monthLabel:(y,m)=>`${y} 年 ${m} 月`,
-  today:()=>{const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
-};
-function genId(){return`${Date.now()}-${Math.random().toString(36).slice(2,7)}`;}
-function getCatIcon(name){return CAT_ICONS[name]||'📁';}
-
-const CHART_COLORS=['#10b981','#3b82f6','#f59e0b','#f43f5e','#a78bfa','#f97316','#06b6d4','#84cc16','#ec4899','#8b5cf6'];
-
-// ══════════════════════════════════════════════════════════════
-// MAIN APP  V2.0
-// ══════════════════════════════════════════════════════════════
-class App {
-  constructor() {
-    this.store      = new DataStore();
-    this.csvParser  = new CsvInvoiceParser();
-    this.drive      = new DriveService();
-    this.currency   = new CurrencyService();
-    this.view       = 'home';
-    this.today      = fmt.today();
-    this.selected   = fmt.today();
-    this.calendarYear  = new Date().getFullYear();
-    this.calendarMonth = new Date().getMonth()+1;
-    this.statsYear  = new Date().getFullYear();
-    this.statsMonth = new Date().getMonth()+1;
-    this.statsCustom = false;
-    this.statsSortMode = 'amount-desc';
-    this._statsOpenCats = new Set();
-    this._toastTimer = null;
-    this._editId = null;
-    this._swipeStartX = null;
-    this._swipeStartY = null;
-    this._swipeCooling = false;
-    this._isDarkMode = localStorage.getItem('theme') !== 'light';
-    this._smSortMode = 'name';
-  }
-
-  // ─── INIT ────────────────────────────────────────────────────
-  init() {
-    this._setupNav();
-    this._setupUpdateBanner();
-    this._registerSW();
-    this.renderView();
-    const {googleClientId}=this.store.data.settings;
-    if(googleClientId) this.drive.init(googleClientId).catch(()=>{});
-    const ci=document.createElement('input');
-    ci.type='file';ci.id='csv-invoice-input';ci.accept='.csv';ci.style.display='none';
-    document.body.appendChild(ci);
-    ci.addEventListener('change',e=>this._handleCsvFile(e));
-    document.addEventListener('click',e=>{if(e.target.closest('#nav-add-btn')) this.openExpenseModal(null);});
-    this._applyTheme(this._isDarkMode);
-    document.getElementById('theme-toggle-btn')?.addEventListener('click',()=>{
-      this._isDarkMode=!this._isDarkMode;
-      localStorage.setItem('theme',this._isDarkMode?'dark':'light');
-      this._applyTheme(this._isDarkMode);
-    });
-  }
-
-  _applyTheme(dark) {
-    document.body.classList.toggle('light-mode',!dark);
-    const btn=document.getElementById('theme-toggle-btn');
-    if(btn) btn.textContent=dark?'🌙':'☀️';
-  }
-
-  _setupNav() {
-// ══════════════════════════════════════════════════════════════
-// UTILITY HELPERS
-// ══════════════════════════════════════════════════════════════
-const fmt = {
   money: (n, currency) => {
     const sym = {TWD:'$',JPY:'¥',CNY:'¥',EUR:'€',USD:'$'}[currency||'TWD']||'$';
     const val = Number(n||0);
@@ -490,22 +402,21 @@ function getCatIcon2(name, customIcons) {
 
 // Exchange rates (relative to TWD)
 const CURRENCIES = {
-  TWD: { symbol:'$',  name:'台幣 TWD', rate: 1      },
-  JPY: { symbol:'¥',  name:'日幣 JPY', rate: 4.7    },
-  CNY: { symbol:'¥',  name:'人民幣 CNY',rate:0.22   },
-  EUR: { symbol:'€',  name:'歐元 EUR', rate:0.029   },
-  USD: { symbol:'$',  name:'美金 USD', rate:0.031   }
+  TWD: { symbol:'$',  name:'台幣 TWD', flag:'🇹🇼', rate: 1      },
+  JPY: { symbol:'¥',  name:'日幣 JPY', flag:'🇯🇵', rate: 4.7    },
+  CNY: { symbol:'¥',  name:'人民幣 CNY',flag:'🇨🇳', rate:0.22   },
+  EUR: { symbol:'€',  name:'歐元 EUR', flag:'🇪🇺', rate:0.029   },
+  USD: { symbol:'$',  name:'美金 USD', flag:'🇺🇸', rate:0.031   }
 };
 
 const CHART_COLORS = ['#f59e0b','#3b82f6','#22c55e','#f43f5e','#a78bfa','#f97316','#2dd4bf','#f472b6','#84cc16','#fb923c'];
 
 // ══════════════════════════════════════════════════════════════
-// MAIN APP  V2.0
+// MAIN APP  V2.1
 // ══════════════════════════════════════════════════════════════
 class App {
   constructor() {
     this.store     = new DataStore();
-    this.invoice   = new InvoiceService();
     this.csvParser = new CsvInvoiceParser();
     this.drive     = new DriveService();
     this.view      = 'home';
@@ -1994,5 +1905,3 @@ class App {
 // ── BOOT ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded',()=>{window._app=new App();window._app.init();});
 
-}
-}

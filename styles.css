@@ -1,4 +1,4 @@
-/* Cost Record PWA — styles.css V2.0 */
+/* Cost Record PWA — styles.css V2.1 */
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=DM+Mono:wght@400;500&display=swap');
 :root{
   --bg:#181825;--bg2:#1e1e2e;--bg3:#252538;--bg4:#2e2e45;
@@ -10,7 +10,7 @@
   --blue:#60a5fa;--blue-dim:rgba(96,165,250,0.13);
   --text:#eeeef8;--text2:#8080a0;--text3:#50506a;
   --radius:14px;--radius-sm:9px;--radius-xs:6px;
-  --nav-h:48px;--header-h:42px;
+  --nav-h:44px;--header-h:42px;
   --font-main:'Noto Sans TC',sans-serif;--font-mono:'DM Mono',monospace;
 }
 body.light-mode{
@@ -54,13 +54,13 @@ input,select,textarea{font-size:16px!important;-webkit-text-size-adjust:100%}
 
 /* Bottom Nav */
 #bottom-nav{height:calc(var(--nav-h) + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);
-  display:flex;align-items:flex-start;background:var(--bg2);border-top:1px solid var(--border);flex-shrink:0}
-.nav-btn{flex:1;height:var(--nav-h);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
-  background:none;border:none;cursor:pointer;color:var(--text3);font-size:10px;font-family:var(--font-main);transition:color .2s;padding:4px 0;position:relative}
+  display:flex;align-items:flex-start;background:var(--bg2);border-top:1px solid var(--border);flex-shrink:0;overflow:hidden}
+.nav-btn{flex:1;height:var(--nav-h);max-height:var(--nav-h);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
+  background:none;border:none;cursor:pointer;color:var(--text3);font-size:10px;font-family:var(--font-main);transition:color .2s;padding:3px 0;position:relative;overflow:hidden}
 .nav-btn .icon{font-size:20px;line-height:1}
 .nav-btn.active{color:var(--amber)}
 .nav-btn.active::after{content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);width:18px;height:2px;background:var(--amber);border-radius:0 0 2px 2px}
-.nav-fab{flex:1.1;height:var(--nav-h);display:flex;align-items:center;justify-content:center;cursor:pointer;}
+.nav-fab{flex:1.1;height:var(--nav-h);max-height:var(--nav-h);display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden}
 .nav-fab-circle{width:48px;height:48px;border-radius:50%;background:var(--amber);display:flex;align-items:center;justify-content:center;font-size:26px;color:var(--bg);box-shadow:0 3px 16px var(--amber-glow);transition:transform .18s,box-shadow .18s;margin-top:-16px}
 .nav-fab:active .nav-fab-circle{transform:scale(.92);box-shadow:0 2px 8px var(--amber-glow)}
 
