@@ -389,34 +389,62 @@ class DriveService {
 // CURRENCY SERVICE — Free exchange rate API
 // ══════════════════════════════════════════════════════════════
 class CurrencyService {
-  constructor() { this._cache={}; this._cacheTime={}; }
+  constructor() {
+    this._cache = {};      // { baseCurrency: { rates, timestamp } }
+    this._TTL   = 3600000; // 1 hour cache
+    // Fallback rates relative to TWD (used when API is unavailable)
+    this._fallbackToTwd = {
+      TWD:1, USD:0.031, EUR:0.029, JPY:4.7, CNY:0.22,
+      THB:1.09, VND:795, KRW:41.5, MYR:0.145, HKD:0.243, SGD:0.042
+    };
+  }
 
+  // Returns rates object { CURRENCY: rate } relative to baseCurrency
   async getRates(baseCurrency='TWD') {
-    const now=Date.now();
-    if(this._cache[baseCurrency]&&(now-this._cacheTime[baseCurrency])<3600000) return this._cache[baseCurrency];
+    const cached = this._cache[baseCurrency];
+    if (cached && Date.now() - cached.timestamp < this._TTL) return cached.rates;
     try {
-      const res=await fetch(`https://open.er-api.com/v6/latest/${baseCurrency}`);
-      if(!res.ok) throw new Error('API error');
-      const d=await res.json();
-      this._cache[baseCurrency]=d.rates;
-      this._cacheTime[baseCurrency]=now;
+      // open.er-api.com provides daily rates for free, no key required
+      const res = await fetch(`https://open.er-api.com/v6/latest/${baseCurrency}`, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const d = await res.json();
+      if (d.result !== 'success') throw new Error('API returned error');
+      this._cache[baseCurrency] = { rates: d.rates, timestamp: Date.now() };
       return d.rates;
     } catch(e) {
-      // Fallback static rates (approximate)
-      const fallback={TWD:{TWD:1,JPY:4.8,CNY:0.22,EUR:0.029,USD:0.031},
-        JPY:{JPY:1,TWD:0.21,CNY:0.047,EUR:0.006,USD:0.0065},
-        CNY:{CNY:1,TWD:4.4,JPY:21.1,EUR:0.13,USD:0.138},
-        EUR:{EUR:1,TWD:34.5,JPY:161,CNY:7.7,USD:1.08},
-        USD:{USD:1,TWD:32,JPY:149,CNY:7.2,EUR:0.93}};
-      return fallback[baseCurrency]||{};
+      console.warn('Exchange rate API failed, using fallback:', e.message);
+      // Build cross-rates from TWD-based fallback
+      const twdBased = this._fallbackToTwd;
+      const baseToTwd = 1 / (twdBased[baseCurrency] || 1);
+      const rates = {};
+      for (const [code, twdRate] of Object.entries(twdBased)) {
+        rates[code] = twdRate * baseToTwd;
+      }
+      return rates;
     }
   }
 
+  // Get today's rate between two currencies (cached for 1 hr)
+  async getRate(from, to) {
+    if (from === to) return 1;
+    const rates = await this.getRates(from);
+    return rates[to] || 1;
+  }
+
   async convert(amount, fromCurrency, toCurrency) {
-    if(fromCurrency===toCurrency) return amount;
-    const rates=await this.getRates(fromCurrency);
-    const rate=rates[toCurrency]||1;
-    return Math.round(amount*rate*100)/100;
+    if (fromCurrency === toCurrency) return amount;
+    const rate = await this.getRate(fromCurrency, toCurrency);
+    return Math.round(amount * rate * 100) / 100;
+  }
+
+  // Get display rate string "1 TWD ≈ X XXX" — live if possible
+  async getDisplayRate(from, to) {
+    if (from === to) return null;
+    try {
+      const rate = await this.getRate(from, to);
+      const val = rate >= 1000 ? Math.round(rate) : rate >= 10 ? rate.toFixed(1) : rate.toFixed(3);
+      return `1 ${from} = ${val} ${to}`;
+    } catch(e) { return null; }
   }
 }
 
@@ -540,17 +568,23 @@ function subIcon(sub, customIcons) {
 
 // Exchange rates (relative to TWD)
 const CURRENCIES = {
-  TWD: { symbol:'$',  name:'台幣 TWD', flag:'🇹🇼', rate: 1      },
-  JPY: { symbol:'¥',  name:'日幣 JPY', flag:'🇯🇵', rate: 4.7    },
-  CNY: { symbol:'¥',  name:'人民幣 CNY',flag:'🇨🇳', rate:0.22   },
-  EUR: { symbol:'€',  name:'歐元 EUR', flag:'🇪🇺', rate:0.029   },
-  USD: { symbol:'$',  name:'美金 USD', flag:'🇺🇸', rate:0.031   }
+  TWD: { symbol:'$',   name:'台幣 TWD',      flag:'🇹🇼', rate:1        },
+  USD: { symbol:'$',   name:'美金 USD',      flag:'🇺🇸', rate:0.031    },
+  EUR: { symbol:'€',   name:'歐元 EUR',      flag:'🇪🇺', rate:0.029    },
+  JPY: { symbol:'¥',   name:'日幣 JPY',      flag:'🇯🇵', rate:4.7      },
+  CNY: { symbol:'¥',   name:'人民幣 CNY',    flag:'🇨🇳', rate:0.22     },
+  THB: { symbol:'฿',   name:'泰銖 THB',      flag:'🇹🇭', rate:1.09     },
+  VND: { symbol:'₫',   name:'越盾 VND',      flag:'🇻🇳', rate:795      },
+  KRW: { symbol:'₩',   name:'韓元 KRW',      flag:'🇰🇷', rate:41.5     },
+  MYR: { symbol:'RM',  name:'令吉 MYR',      flag:'🇲🇾', rate:0.145    },
+  HKD: { symbol:'HK$', name:'港幣 HKD',      flag:'🇭🇰', rate:0.243    },
+  SGD: { symbol:'S$',  name:'新加坡幣 SGD',  flag:'🇸🇬', rate:0.042    },
 };
 
 const CHART_COLORS = ['#f59e0b','#3b82f6','#22c55e','#f43f5e','#a78bfa','#f97316','#2dd4bf','#f472b6','#84cc16','#fb923c'];
 
 // ══════════════════════════════════════════════════════════════
-// MAIN APP  V3.3
+// MAIN APP  V3.7
 // ══════════════════════════════════════════════════════════════
 class App {
   constructor() {
@@ -576,6 +610,7 @@ class App {
     // Default is light; only dark when explicitly saved as 'dark'
     this._isDarkMode = localStorage.getItem('theme') === 'dark';
     this._currency = this.store.data.currency || 'TWD';
+    this._liveRates = null; // populated async after init
   }
 
   // ─── HELPERS ──────────────────────────────────────────────────
@@ -601,6 +636,8 @@ class App {
     this.renderView();
     const {googleClientId}=this.store.data.settings;
     if(googleClientId) this.drive.init(googleClientId).catch(()=>{});
+    // Fetch live exchange rates on startup (non-blocking)
+    this.currencySvc.getRates('TWD').then(rates=>{ this._liveRates=rates; }).catch(()=>{});
     // CSV input
     const ci=document.createElement('input');
     ci.type='file';ci.id='csv-invoice-input';ci.accept='.csv';ci.style.display='none';
@@ -734,7 +771,7 @@ class App {
             <div class="currency-symbol">${info.symbol}</div>
             <div class="currency-info">
               <div class="currency-name">${info.name}</div>
-              <div class="currency-rate">1 TWD ≈ ${code==='TWD'?'1':CURRENCIES[code].rate} ${code}（固定匯率）</div>
+              <div class="currency-rate" id="rate-${code}">1 TWD ≈ ${code==='TWD'?'1':(CURRENCIES[code].rate)} ${code} (載入中…)</div>
             </div>
             ${cur===code?'<span class="currency-check">✓</span>':''}
           </div>`).join('')}
@@ -749,6 +786,17 @@ class App {
         this.renderView();
         this.toast(`已切換至 ${CURRENCIES[el.dataset.code].name}`,'success');
       });
+    });
+    // Load live rates for display (non-blocking)
+    Object.keys(CURRENCIES).forEach(async code=>{
+      if(code==='TWD') return;
+      const el=document.getElementById(`rate-${code}`);
+      if(!el) return;
+      try{
+        const rate=await this.currencySvc.getRate('TWD',code);
+        const val=rate>=1000?Math.round(rate):rate>=10?rate.toFixed(1):rate.toFixed(3);
+        el.textContent=`1 TWD = ${val} ${code} (即時匯率)`;
+      } catch(e){ el.textContent=`1 TWD ≈ ${CURRENCIES[code].rate} ${code} (離線)`; }
     });
   }
 
@@ -817,6 +865,11 @@ class App {
     const origCur = e.currency || 'TWD';
     const dispCur = this._currency;
     if(origCur === dispCur) return amt;
+    // Use live rates if available, else fallback to static
+    if(this._liveRates) {
+      const toTwd = origCur==='TWD' ? amt : amt / (this._liveRates[origCur] || CURRENCIES[origCur]?.rate || 1);
+      return dispCur==='TWD' ? toTwd : toTwd * (this._liveRates[dispCur] || CURRENCIES[dispCur]?.rate || 1);
+    }
     // Convert: origCur → TWD → dispCur
     const toTwd = origCur==='TWD' ? amt : amt / (CURRENCIES[origCur]?.rate||1);
     return dispCur==='TWD' ? toTwd : toTwd * (CURRENCIES[dispCur]?.rate||1);
@@ -2055,6 +2108,55 @@ class App {
       });
     });
     document.querySelectorAll('#cat2-row .edit-cat-btn').forEach(btn=>{btn.addEventListener('click',()=>{document.querySelectorAll('#cat2-row .edit-cat-btn').forEach(b=>b.classList.remove('selected'));btn.classList.add('selected');});});
+
+    // ── Fix 3: Auto-apply store mapping when store name is entered ────────────
+    const _applyStoreToUI = (storeName) => {
+      if (!storeName) return;
+      const mapped = this._applyStoreMapping(storeName);
+      if (!mapped.cat1) return; // no matching rule
+      // Select cat1
+      const cat1Btns = document.querySelectorAll('#cat1-row .edit-cat-btn');
+      let matchedCat = null;
+      cat1Btns.forEach(b => {
+        b.classList.remove('selected');
+        if (b.dataset.cat1 === mapped.cat1) { b.classList.add('selected'); matchedCat = b; }
+      });
+      // Build and select cat2
+      if (matchedCat && mapped.cat2) {
+        const cat = cats.find(c => c.name === mapped.cat1);
+        const area = document.getElementById('cat2-area');
+        const row  = document.getElementById('cat2-row');
+        if (cat && cat.subs?.length) {
+          row.innerHTML = cat.subs.map(sub =>
+            `<button class="edit-cat-btn${subName(sub)===mapped.cat2?' selected':''}" data-cat1="${mapped.cat1}" data-cat2="${subName(sub)}">
+              <div class="edit-cat-circle">${this.catIcon(sub)}</div>
+              <div class="edit-cat-label">${subName(sub)}</div>
+            </button>`
+          ).join('');
+          area.classList.remove('hidden');
+          row.querySelectorAll('.edit-cat-btn').forEach(b => {
+            b.addEventListener('click', () => {
+              row.querySelectorAll('.edit-cat-btn').forEach(x => x.classList.remove('selected'));
+              b.classList.add('selected');
+            });
+          });
+        }
+        this.toast(`已自動帶入「${mapped.cat1} › ${mapped.cat2}」`, 'info');
+      }
+    };
+    // Trigger on blur (when user finishes typing store name)
+    const storeInput = document.getElementById('f-store');
+    if (storeInput) {
+      storeInput.addEventListener('blur', () => {
+        // Only auto-fill if cat1 not already selected
+        const alreadySelected = document.querySelector('#cat1-row .edit-cat-btn.selected');
+        if (!alreadySelected) _applyStoreToUI(storeInput.value.trim());
+      });
+      // Also trigger immediately if store value already populated (edit mode)
+      if (storeInput.value.trim() && !e.category1) {
+        setTimeout(() => _applyStoreToUI(storeInput.value.trim()), 100);
+      }
+    }
     document.querySelectorAll('.inv-item-row[data-inv-id]').forEach(row=>{row.addEventListener('click',()=>{this.closeModal(()=>this.openExpenseModal(row.dataset.invId));});});
     // Use pointerdown so buttons respond instantly without waiting for keyboard dismiss
     const _addFastBtn = (id, fn) => {
