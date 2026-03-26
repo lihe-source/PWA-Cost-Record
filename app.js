@@ -550,7 +550,7 @@ const CURRENCIES = {
 const CHART_COLORS = ['#f59e0b','#3b82f6','#22c55e','#f43f5e','#a78bfa','#f97316','#2dd4bf','#f472b6','#84cc16','#fb923c'];
 
 // ══════════════════════════════════════════════════════════════
-// MAIN APP  V2.5
+// MAIN APP  V3.3
 // ══════════════════════════════════════════════════════════════
 class App {
   constructor() {
@@ -731,64 +731,7 @@ class App {
     },{passive:true});
   }
 
-  _initCatDragOrder() {
-    const catList=document.getElementById('cat-list');
-    if(!catList) return;
-    const cats=this.store.data.categories;
-    let dragSrc=null, touchCI=null, touchItem=null, touchStartY=0;
-
-    // Desktop drag
-    catList.querySelectorAll('.cat2-section').forEach(el=>{
-      el.setAttribute('draggable','true');
-      el.addEventListener('dragstart',e=>{dragSrc=el;el.classList.add('dragging');e.dataTransfer.effectAllowed='move';});
-      el.addEventListener('dragend',()=>{el.classList.remove('dragging');dragSrc=null;catList.querySelectorAll('.cat2-section').forEach(x=>x.classList.remove('drag-over'));});
-      el.addEventListener('dragover',e=>{e.preventDefault();if(el!==dragSrc){catList.querySelectorAll('.cat2-section').forEach(x=>x.classList.remove('drag-over'));el.classList.add('drag-over');}});
-      el.addEventListener('drop',e=>{
-        e.preventDefault();if(!dragSrc||el===dragSrc) return;
-        const from=+dragSrc.dataset.ci,to=+el.dataset.ci;
-        const [m]=cats.splice(from,1); cats.splice(to,0,m);
-        this.store.save(); this.closeModal(); setTimeout(()=>this._openCategoriesPage(),50);
-      });
-    });
-
-    // Touch drag
-    catList.querySelectorAll('.cat-drag-handle').forEach(handle=>{
-      handle.addEventListener('touchstart',e=>{
-        e.stopPropagation();
-        touchCI=+handle.dataset.dragCat;
-        touchItem=catList.querySelectorAll('.cat2-section')[touchCI];
-        touchStartY=e.touches[0].clientY;
-        touchItem?.classList.add('dragging');
-      },{passive:true});
-    });
-    const onTouchMove=e=>{
-      if(touchItem===null||touchCI===null) return;
-      const y=e.touches[0].clientY;
-      const secs=[...catList.querySelectorAll('.cat2-section')];
-      secs.forEach(s=>s.classList.remove('drag-over'));
-      secs.forEach((s,i)=>{
-        const r=s.getBoundingClientRect();
-        if(y>r.top&&y<r.bottom&&i!==touchCI) s.classList.add('drag-over');
-      });
-    };
-    const onTouchEnd=e=>{
-      if(touchItem===null||touchCI===null) return;
-      const y=e.changedTouches[0].clientY;
-      const secs=[...catList.querySelectorAll('.cat2-section')];
-      let targetCI=null;
-      secs.forEach((s,i)=>{const r=s.getBoundingClientRect();if(y>r.top&&y<r.bottom&&i!==touchCI)targetCI=i;});
-      touchItem.classList.remove('dragging');
-      secs.forEach(s=>s.classList.remove('drag-over'));
-      if(targetCI!==null){
-        const [m]=cats.splice(touchCI,1); cats.splice(targetCI,0,m);
-        this.store.save(); this.closeModal(); setTimeout(()=>this._openCategoriesPage(),50);
-      }
-      touchItem=null; touchCI=null;
-    };
-    catList.addEventListener('touchmove',onTouchMove,{passive:true});
-    catList.addEventListener('touchend',onTouchEnd,{passive:true});
-  }
-
+  _initCatDragOrder() { /* replaced by sort-mode UI */ }
   renderView() {
     try {
       const main=document.getElementById('main-content');
@@ -1471,7 +1414,7 @@ class App {
   }
 
   // ─── CATEGORIES PAGE ──────────────────────────────────────────
-  _openCategoriesPage() {
+  _openCategoriesPage(sortMode=false) {
     const cats=this.store.data.categories;
     const overlay=document.getElementById('modal-overlay');
     const content=document.getElementById('modal-content');
@@ -1481,26 +1424,37 @@ class App {
       <div class="modal-topbar">
         <button class="modal-topbar-btn" id="modal-close-btn">✕</button>
         <div class="modal-topbar-title">分類管理</div>
-        <button class="modal-topbar-btn confirm" id="cat-add-parent-btn" title="新增大分類">＋</button>
+        <div style="display:flex;gap:6px;">
+          <button class="modal-topbar-btn${sortMode?' confirm':''}" id="cat-sort-mode-btn" title="調整順序" style="font-size:20px;">⇅</button>
+          <button class="modal-topbar-btn confirm" id="cat-add-parent-btn" title="新增大分類" ${sortMode?'style="display:none"':''}>＋</button>
+        </div>
       </div>
       <div class="modal-body" style="padding:8px 0;">
-        <div style="font-size:10px;color:var(--text3);text-align:center;padding-bottom:6px;">長按 ☰ 拖曳可調整排列順序</div>
+        ${sortMode ? '<div style="font-size:11px;color:var(--amber);text-align:center;padding:4px 0 8px;font-weight:600;">▲▼ 排序模式 — 點擊箭頭調整大分類順序</div>' : ''}
         <div id="cat-list">
         ${cats.map((cat,ci)=>`
           <div class="cat2-section" data-ci="${ci}">
             <div class="cat2-section-header">
-              <span class="cat-drag-handle" data-drag-cat="${ci}" title="拖曳排序">☰</span>
-              <span class="cat2-section-icon" data-action="icon-cat" data-ci="${ci}">${this.catIcon(cat.name)}</span>
-              <span class="cat2-section-name">${cat.name}</span>
-              <div style="display:flex;gap:4px;margin-left:auto;">
-                <button class="cat-action-btn" data-action="rename-cat" data-ci="${ci}">改名</button>
-                <button class="cat-action-btn danger" data-action="del-cat" data-ci="${ci}">刪除</button>
-              </div>
+              ${sortMode ? `
+                <div style="display:flex;flex-direction:column;gap:2px;margin-right:6px;">
+                  <button class="cat-order-btn" data-order="up" data-ci="${ci}" ${ci===0?'disabled':''} style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;width:32px;height:28px;cursor:pointer;font-size:14px;color:var(--amber);display:flex;align-items:center;justify-content:center;${ci===0?'opacity:.3;':''}" >▲</button>
+                  <button class="cat-order-btn" data-order="down" data-ci="${ci}" ${ci===cats.length-1?'disabled':''} style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;width:32px;height:28px;cursor:pointer;font-size:14px;color:var(--amber);display:flex;align-items:center;justify-content:center;${ci===cats.length-1?'opacity:.3;':''}" >▼</button>
+                </div>
+                <span class="cat2-section-icon">${this.catIcon(cat.name)}</span>
+                <span class="cat2-section-name">${cat.name}</span>
+              ` : `
+                <span class="cat2-section-icon" data-action="icon-cat" data-ci="${ci}">${this.catIcon(cat.name)}</span>
+                <span class="cat2-section-name">${cat.name}</span>
+                <div style="display:flex;gap:4px;margin-left:auto;">
+                  <button class="cat-action-btn" data-action="rename-cat" data-ci="${ci}">改名</button>
+                  <button class="cat-action-btn danger" data-action="del-cat" data-ci="${ci}">刪除</button>
+                </div>
+              `}
             </div>
+            ${!sortMode ? `
             <div class="cat2-sub-list">
               ${(cat.subs||[]).map((sub,si)=>`
                 <div class="cat2-sub-item">
-                  <span class="sub-drag-handle">⋮⋮</span>
                   <span class="cat2-sub-icon" data-action="icon-sub" data-ci="${ci}" data-si="${si}">${this.catIcon(sub)}</span>
                   <span class="cat2-sub-name">${subName(sub)}</span>
                   <div style="display:flex;gap:4px;margin-left:auto;">
@@ -1512,7 +1466,7 @@ class App {
                 <input class="cat-add-input" id="sub-input-${ci}" placeholder="新增小分類…">
                 <button class="btn-primary" data-action="add-sub" data-ci="${ci}" style="padding:5px 11px;font-size:11px;">新增</button>
               </div>
-            </div>
+            </div>` : ''}
           </div>`).join('')}
         </div>
       </div>`;
@@ -1520,20 +1474,37 @@ class App {
     requestAnimationFrame(()=>content.classList.add('slide-in'));
     document.getElementById('modal-close-btn')?.addEventListener('click',()=>this.closeModal());
     backdrop.addEventListener('click',()=>this.closeModal(),{once:true});
-    document.getElementById('cat-add-parent-btn')?.addEventListener('click',()=>{
-      this._promptCatName('新增大分類','',name=>{this.store.data.categories.push({name,icon:'📦',subs:[]});this.store.save();this.closeModal();setTimeout(()=>this._openCategoriesPage(),320);this.toast('已新增','success');});
+    // Sort mode toggle
+    document.getElementById('cat-sort-mode-btn')?.addEventListener('click',()=>{
+      this.closeModal();setTimeout(()=>this._openCategoriesPage(!sortMode),50);
     });
-    document.querySelectorAll('[data-action]').forEach(btn=>{
+    // Sort ▲▼ buttons
+    document.querySelectorAll('.cat-order-btn').forEach(btn=>{
       btn.addEventListener('click',e=>{
         e.stopPropagation();
-        const {action,ci,si}=btn.dataset;
-        this._handleCatAction(action,+ci,si!==undefined?+si:null);
+        const ci=+btn.dataset.ci, dir=btn.dataset.order;
+        if(dir==='up'&&ci>0){
+          [cats[ci-1],cats[ci]]=[cats[ci],cats[ci-1]];
+        } else if(dir==='down'&&ci<cats.length-1){
+          [cats[ci],cats[ci+1]]=[cats[ci+1],cats[ci]];
+        }
+        this.store.save();
+        this.closeModal();setTimeout(()=>this._openCategoriesPage(true),50);
       });
     });
-    // Init drag-to-reorder after DOM is ready
-    this._initCatDragOrder();
+    if(!sortMode){
+      document.getElementById('cat-add-parent-btn')?.addEventListener('click',()=>{
+        this._promptCatName('新增大分類','',name=>{this.store.data.categories.push({name,icon:'📦',subs:[]});this.store.save();this.closeModal();setTimeout(()=>this._openCategoriesPage(),320);this.toast('已新增','success');});
+      });
+      document.querySelectorAll('[data-action]').forEach(btn=>{
+        btn.addEventListener('click',e=>{
+          e.stopPropagation();
+          const {action,ci,si}=btn.dataset;
+          this._handleCatAction(action,+ci,si!==undefined?+si:null);
+        });
+      });
+    }
   }
-
   _openIconPicker(title, currentIcon, onSelect) {
     this._openSheet(`
       <div class="modal-handle"></div>
@@ -2051,9 +2022,18 @@ class App {
     });
     document.querySelectorAll('#cat2-row .edit-cat-btn').forEach(btn=>{btn.addEventListener('click',()=>{document.querySelectorAll('#cat2-row .edit-cat-btn').forEach(b=>b.classList.remove('selected'));btn.classList.add('selected');});});
     document.querySelectorAll('.inv-item-row[data-inv-id]').forEach(row=>{row.addEventListener('click',()=>{this.closeModal(()=>this.openExpenseModal(row.dataset.invId));});});
-    document.getElementById('modal-close-btn')?.addEventListener('click',()=>this.closeModal());
+    // Use pointerdown so buttons respond instantly without waiting for keyboard dismiss
+    const _addFastBtn = (id, fn) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      let _fired = false;
+      el.addEventListener('pointerdown', () => { _fired = false; });
+      el.addEventListener('pointerup', (e) => { if(!_fired){ _fired=true; e.preventDefault(); fn(); } });
+      el.addEventListener('click', (e) => { e.preventDefault(); if(!_fired){ _fired=true; fn(); } });
+    };
+    _addFastBtn('modal-close-btn', () => this.closeModal());
+    _addFastBtn('modal-save-btn', () => this._saveExpense(e, isEdit));
     backdrop.addEventListener('click',()=>this.closeModal(),{once:true});
-    document.getElementById('modal-save-btn')?.addEventListener('click',()=>this._saveExpense(e,isEdit));
 
     // ── Currency auto-conversion ──
     let _curPrev = eCur; // track previous currency for conversion
