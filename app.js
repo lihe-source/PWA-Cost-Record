@@ -1,5 +1,5 @@
 /* ─────────────────────────────────────────────────────────────
-   Cost Record PWA — app.js  V2.1
+   Cost Record PWA — app.js  V2.2
    Modules: DataStore · DriveService · CurrencyService · App
 ───────────────────────────────────────────────────────────── */
 'use strict';
@@ -412,14 +412,15 @@ const CURRENCIES = {
 const CHART_COLORS = ['#f59e0b','#3b82f6','#22c55e','#f43f5e','#a78bfa','#f97316','#2dd4bf','#f472b6','#84cc16','#fb923c'];
 
 // ══════════════════════════════════════════════════════════════
-// MAIN APP  V2.1
+// MAIN APP  V2.2
 // ══════════════════════════════════════════════════════════════
 class App {
   constructor() {
-    this.store     = new DataStore();
-    this.csvParser = new CsvInvoiceParser();
-    this.drive     = new DriveService();
-    this.view      = 'home';
+    this.store       = new DataStore();
+    this.csvParser   = new CsvInvoiceParser();
+    this.drive       = new DriveService();
+    this.currencySvc = new CurrencyService();
+    this.view        = 'home';
     this.today     = fmt.today();
     this.selected  = fmt.today();
     this.calendarYear  = new Date().getFullYear();
@@ -444,7 +445,7 @@ class App {
     this._currency = v;
     this.store.data.currency = v;
     this.store.save();
-    document.getElementById('currency-btn').textContent = v;
+    const _cb=document.getElementById('currency-btn');if(_cb)_cb.textContent=v;
   }
   get customIcons() { return this.store.data.categoryIcons || {}; }
   catIcon(name) { return getCatIcon2(name, this.customIcons); }
@@ -542,7 +543,7 @@ class App {
             <div class="currency-symbol">${info.symbol}</div>
             <div class="currency-info">
               <div class="currency-name">${info.name}</div>
-              <div class="currency-rate">1 TWD = ${code==='TWD'?'1':CURRENCIES[code].rate} ${code}</div>
+              <div class="currency-rate">1 TWD ≈ ${code==='TWD'?'1':CURRENCIES[code].rate} ${code}（固定匯率）</div>
             </div>
             ${cur===code?'<span class="currency-check">✓</span>':''}
           </div>`).join('')}
@@ -1632,7 +1633,7 @@ class App {
             ${it.id===e.id?`<span class="inv-item-current-badge">本筆</span>`:`<span class="inv-item-cat${it.status==='pending'?' pending':''}">${it.status==='pending'?'待分類':(it.category1||'未分類')}</span>`}
           </div>`).join('')}
       </div>`:'';
-    const currencyOptions=Object.entries(CURRENCIES).map(([code,info])=>`<option value="${code}" ${eCur===code?'selected':''}>${code}</option>`).join('');
+    const currencyOptions=Object.entries(CURRENCIES).map(([code,info])=>`<option value="${code}" ${eCur===code?'selected':''}>${info.flag} ${info.name.split(' ')[0]} (${code})</option>`).join('');
     const overlay=document.getElementById('modal-overlay');
     const content=document.getElementById('modal-content');
     const backdrop=document.getElementById('modal-backdrop');
@@ -1696,6 +1697,36 @@ class App {
     document.getElementById('modal-close-btn')?.addEventListener('click',()=>this.closeModal());
     backdrop.addEventListener('click',()=>this.closeModal(),{once:true});
     document.getElementById('modal-save-btn')?.addEventListener('click',()=>this._saveExpense(e,isEdit));
+
+    // ── Currency auto-conversion ──
+    let _curPrev = eCur; // track previous currency for conversion
+    document.getElementById('f-currency')?.addEventListener('change', async(ev)=>{
+      const toCur = ev.target.value;
+      const fromCur = _curPrev;
+      if(fromCur === toCur) return;
+      const amtEl = document.getElementById('f-amount');
+      const amt = parseFloat(amtEl?.value);
+      if(!amtEl || isNaN(amt) || amt <= 0) { _curPrev = toCur; return; }
+      // Show converting indicator
+      const sel = document.getElementById('f-currency');
+      const origText = sel.options[sel.selectedIndex]?.text;
+      amtEl.disabled = true;
+      amtEl.style.opacity = '0.5';
+      try {
+        const converted = await this.currencySvc.convert(amt, fromCur, toCur);
+        amtEl.value = String(converted);
+        const srcInfo = CURRENCIES[fromCur]?.symbol||fromCur;
+        const dstInfo = CURRENCIES[toCur]?.symbol||toCur;
+        this.toast(srcInfo+amt+' → '+dstInfo+converted, 'info');
+      } catch(err) {
+        this.toast('匯率取得失敗，已保留原金額', 'error');
+        ev.target.value = fromCur; // revert
+      } finally {
+        amtEl.disabled = false;
+        amtEl.style.opacity = '';
+        _curPrev = toCur;
+      }
+    });
     document.getElementById('modal-delete-btn')?.addEventListener('click',()=>{
       if(!confirm('確定刪除？'))return;
       this.store.deleteExpense(this._editId);this.toast('已刪除','success');this.closeModal(()=>this.renderView());
