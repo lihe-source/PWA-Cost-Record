@@ -1,5 +1,5 @@
 /* ─────────────────────────────────────────────────────────────
-   Cost Record PWA — app.js  V4.4
+   Cost Record PWA — app.js  V4.5
    Modules: DataStore · DriveService · CurrencyService · App
 ───────────────────────────────────────────────────────────── */
 'use strict';
@@ -1145,16 +1145,6 @@ class App {
 
       <div class="settings-group-label">其他</div>
 
-      <!-- UI Scale -->
-      <div class="settings-card" id="open-ui-scale-btn">
-        <div class="settings-card-icon">🔠</div>
-        <div class="settings-card-body">
-          <div class="settings-card-title">介面縮放</div>
-          <div class="settings-card-sub" id="ui-scale-sub">目前：${Math.round((parseFloat(localStorage.getItem('uiScale')||'1')*100))}%</div>
-        </div>
-        <span class="settings-arrow">›</span>
-      </div>
-
       <div class="settings-card danger" id="clear-data-btn">
         <div class="settings-card-icon">⚠️</div>
         <div class="settings-card-body">
@@ -1485,60 +1475,11 @@ class App {
     document.getElementById('open-local-backup-btn')?.addEventListener('click',()=>this._openLocalBackupSheet());
     document.getElementById('open-csv-import-btn')?.addEventListener('click',()=>this.openInvoiceImportModal());
     document.getElementById('open-gemini-settings-btn')?.addEventListener('click',()=>this._openGeminiSettings());
-    document.getElementById('open-ui-scale-btn')?.addEventListener('click',()=>this._openUiScaleSheet());
     document.getElementById('clear-data-btn')?.addEventListener('click',()=>{
       if(!confirm('確定清除所有資料？')) return;
       if(!confirm('再次確認：永久清除所有記帳資料。')) return;
       localStorage.removeItem('cost_record_v1');this.store.data=this.store._default();
       this.toast('已清除','info');this.renderView();
-    });
-  }
-
-  _openUiScaleSheet() {
-    const cur = parseFloat(localStorage.getItem('uiScale')||'1');
-    this._openSheet(`
-      <div class="modal-handle"></div>
-      <div class="modal-header">
-        <div class="modal-title">🔠 介面縮放</div>
-        <button class="modal-close" id="modal-close-btn">✕</button>
-      </div>
-      <div class="modal-body" style="gap:6px;">
-        <p style="font-size:12px;color:var(--text2);line-height:1.7;">調整 Nav 圖示、標題、金額等介面文字大小。</p>
-        <div class="ui-scale-row">
-          <span style="font-size:18px">🔡</span>
-          <input class="ui-scale-slider" type="range" id="scale-slider" min="0.75" max="1.3" step="0.05" value="${cur}">
-          <span style="font-size:18px">🔤</span>
-        </div>
-        <div class="ui-scale-hint"><span>75%</span><span id="scale-pct-label">${Math.round(cur*100)}%</span><span>130%</span></div>
-        <div style="text-align:center;padding:4px 0;font-size:13px;color:var(--text2);">
-          Nav 範例：
-          <span id="scale-preview" style="font-size:calc(30px * ${cur});display:inline-block;">🗂️</span>
-          <span id="scale-preview-txt" style="font-size:calc(13px * ${cur});display:inline-block;"> 帳本</span>
-        </div>
-        <div style="display:flex;gap:8px;margin-top:4px;">
-          <button class="btn-secondary" id="scale-reset-btn" style="flex:1;">重設 100%</button>
-          <button class="btn-primary" id="scale-save-btn" style="flex:1;">套用</button>
-        </div>
-      </div>`);
-    const slider = document.getElementById('scale-slider');
-    const pctLbl = document.getElementById('scale-pct-label');
-    const preview = document.getElementById('scale-preview');
-    const previewTxt = document.getElementById('scale-preview-txt');
-    slider?.addEventListener('input', ()=>{
-      const v = parseFloat(slider.value);
-      if(pctLbl) pctLbl.textContent = Math.round(v*100)+'%';
-      if(preview) preview.style.fontSize = (30*v)+'px';
-      if(previewTxt) previewTxt.style.fontSize = (13*v)+'px';
-    });
-    document.getElementById('scale-reset-btn')?.addEventListener('click',()=>{
-      slider.value='1';slider.dispatchEvent(new Event('input'));
-    });
-    document.getElementById('scale-save-btn')?.addEventListener('click',()=>{
-      const v = parseFloat(slider.value);
-      localStorage.setItem('uiScale', String(v));
-      document.documentElement.style.setProperty('--ui-scale', String(v));
-      this.toast(`介面縮放已設為 ${Math.round(v*100)}%`,'success');
-      this.closeModal(()=>this.renderView());
     });
   }
 

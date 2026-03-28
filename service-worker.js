@@ -1,4 +1,4 @@
-// Cost Record Service Worker V4.4
+// Cost Record Service Worker V4.5
 // Strategy: Cache-First (instant load) + Background revalidation
 // On first visit: fetch from network and cache. After that: serve from cache instantly.
 // Silently updates cache in background — next open gets fresh files.
