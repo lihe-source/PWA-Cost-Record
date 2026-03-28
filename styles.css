@@ -104,7 +104,7 @@ input,select,textarea{font-size:16px!important;-webkit-text-size-adjust:100%}
   font-size:12px;font-family:var(--font-main);font-weight:600;letter-spacing:.01em;
   transition:color .2s;padding:10px 0 5px;position:relative;min-width:44px;
 }
-.nav-btn .icon{font-size:36px;line-height:1}
+.nav-btn .icon{line-height:1}
 .nav-btn span:last-child{font-size:13px;line-height:1;font-weight:600}
 .nav-btn.active{color:var(--amber)}
 .nav-btn.active .nav-icon-wrap{background:var(--amber-dim);border-radius:16px;padding:2px 10px}
@@ -511,6 +511,33 @@ input,select,textarea{font-size:16px!important;-webkit-text-size-adjust:100%}
 /* Drive version item enhancement */
 .drive-version-time{font-size:13px;font-weight:600;color:var(--blue)}
 .drive-version-info{font-size:11px;color:var(--text3);margin-top:2px}
+
+/* Stats content slide animation */
+@keyframes statsSlideInLeft{from{transform:translateX(32%);opacity:0}to{transform:translateX(0);opacity:1}}
+@keyframes statsSlideInRight{from{transform:translateX(-32%);opacity:0}to{transform:translateX(0);opacity:1}}
+.stats-slide-left{animation:statsSlideInLeft .22s cubic-bezier(.25,.46,.45,.94) both}
+.stats-slide-right{animation:statsSlideInRight .22s cubic-bezier(.25,.46,.45,.94) both}
+
+/* UI Scale CSS custom properties */
+:root{--ui-scale:1}
+.nav-btn .icon-emoji{font-size:calc(30px * var(--ui-scale))}
+.nav-btn span:last-child{font-size:calc(13px * var(--ui-scale))}
+.ref-card-title{font-size:calc(15px * var(--ui-scale))}
+.ref-card-sub{font-size:calc(12px * var(--ui-scale))}
+.ref-card-amount{font-size:calc(17px * var(--ui-scale))}
+.month-nav-title{font-size:calc(17px * var(--ui-scale))}
+.cal-day-num{font-size:calc(14px * var(--ui-scale))}
+.stat-value.big{font-size:calc(18px * var(--ui-scale))}
+.stat-value{font-size:calc(15px * var(--ui-scale))}
+.settings-card-title{font-size:calc(14px * var(--ui-scale))}
+.settings-card-sub{font-size:calc(11px * var(--ui-scale))}
+
+/* UI Scale slider in settings */
+.ui-scale-row{display:flex;align-items:center;gap:10px;padding:10px 14px}
+.ui-scale-label{font-size:12px;color:var(--text2);flex-shrink:0;width:28px;text-align:center;font-family:var(--font-mono);font-weight:600}
+.ui-scale-slider{flex:1;-webkit-appearance:none;height:4px;border-radius:2px;background:var(--bg4);outline:none;cursor:pointer}
+.ui-scale-slider::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:var(--amber);cursor:pointer;box-shadow:0 2px 6px var(--amber-glow)}
+.ui-scale-hint{display:flex;justify-content:space-between;padding:0 14px 10px;font-size:10px;color:var(--text3)}
 @media(min-width:430px){#app{border-left:1px solid var(--border);border-right:1px solid var(--border);box-shadow:0 0 60px rgba(0,0,0,.8)}}
 
 /* Google Drive login card */
