@@ -1,5 +1,5 @@
 /* ─────────────────────────────────────────────────────────────
-   Cost Record PWA — app.js  V3.2
+   Cost Record PWA — app.js  V4.2
    Modules: DataStore · DriveService · CurrencyService · App
 ───────────────────────────────────────────────────────────── */
 'use strict';
@@ -607,11 +607,14 @@ class App {
     this._swipeStartX = null;
     this._swipeStartY = null;
     this._swipeCooling = false;
+    this._statsSwipeCooling = false;
     // Default is light; only dark when explicitly saved as 'dark'
     // Theme already applied by inline <script> in <head>; read actual DOM state
     this._isDarkMode = !document.body.classList.contains('light-mode');
     this._currency = this.store.data.currency || 'TWD';
     this._liveRates = null; // populated async after init
+    this._updateCheckTimer = null;
+    this._updateCheckBound = false;
   }
 
   // ─── HELPERS ──────────────────────────────────────────────────
@@ -706,16 +709,34 @@ class App {
             }
           });
         });
-        // Poll for updates: every 30s check GitHub for a new SW
-        setInterval(() => reg.update(), 30000);
-        // Also do a version.js fetch comparison (handles CDN edge caching)
-        this._checkRemoteVersion();
-        setInterval(() => this._checkRemoteVersion(), 60000);
+        this._startUpdateMonitoring(reg);
       })
       .catch(err => console.warn('SW register failed:', err));
 
     // If SW controller swaps out (new SW took over), reload immediately
     navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload());
+  }
+
+  _startUpdateMonitoring(reg) {
+    const runChecks = async () => {
+      if (document.visibilityState !== 'visible' || !navigator.onLine) return;
+      try { await reg.update(); } catch(e) {}
+      this._checkRemoteVersion();
+    };
+
+    runChecks();
+
+    if (!this._updateCheckTimer) {
+      // Reduce background polling to preserve battery and avoid unnecessary work on mobile PWAs.
+      this._updateCheckTimer = window.setInterval(runChecks, 15 * 60 * 1000);
+    }
+
+    if (this._updateCheckBound) return;
+    this._updateCheckBound = true;
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') runChecks();
+    });
+    window.addEventListener('online', runChecks);
   }
 
   _showUpdateBanner() {
@@ -1114,6 +1135,38 @@ class App {
     </div>`;
   }
 
+  _attachStatsSwipe(el) {
+    if(!el) return;
+    let sx=null, sy=null, fired=false;
+    const onStart = e => {
+      if(this._statsSwipeCooling) return;
+      sx=e.touches[0].clientX; sy=e.touches[0].clientY; fired=false;
+    };
+    const onEnd = e => {
+      if(sx===null||fired||this._statsSwipeCooling) return;
+      const dx=e.changedTouches[0].clientX-sx;
+      const dy=e.changedTouches[0].clientY-sy;
+      if(Math.abs(dx)>50 && Math.abs(dx)>Math.abs(dy)*2) {
+        fired=true;
+        this._statsSwipeCooling=true;
+        const delta = dx<0 ? 1 : -1; // left=next, right=prev
+        this.statsMonth+=delta;
+        if(this.statsMonth<1){this.statsMonth=12;this.statsYear--;}
+        if(this.statsMonth>12){this.statsMonth=1;this.statsYear++;}
+        this.statsCustom=false;
+        const lbl=document.getElementById('stats-month-label');
+        if(lbl) lbl.textContent=`${this.statsYear} 年 ${this.statsMonth} 月`;
+        document.getElementById('stats-custom-range')?.classList.remove('open');
+        document.getElementById('stats-custom-btn')?.classList.remove('active');
+        this._renderStats(this.store.getByMonth(this.statsYear,this.statsMonth));
+        setTimeout(()=>{this._statsSwipeCooling=false;},500);
+      }
+      sx=null; sy=null;
+    };
+    el.addEventListener('touchstart',onStart,{passive:true});
+    el.addEventListener('touchend',onEnd,{passive:true});
+  }
+
   _statsFromDefault() { return `${this.statsYear}-${String(this.statsMonth).padStart(2,'0')}-01`; }
 
   _renderStats(expenses) {
@@ -1408,6 +1461,9 @@ class App {
       document.getElementById('stats-month-label').textContent=`${from}~${to}`;
       this._renderStats(exps);
     });
+    // Stats swipe: left=next month, right=prev month
+    this._attachStatsSwipe(document.getElementById('main-content'));
+
     document.getElementById('stats-content')?.addEventListener('click',e=>{
       const sortBtn=e.target.closest('.stats-sort-btn');
       if(sortBtn&&sortBtn.dataset.sort){
@@ -1535,7 +1591,6 @@ class App {
     };
 
     // ── full modal HTML ───────────────────────────────────────────────────────
-    content.style.transform=''; content.style.transition=''; content.style.opacity='';
     content.innerHTML=`
       <div class="modal-topbar">
         <button class="modal-topbar-btn" id="modal-close-btn">✕</button>
@@ -1885,10 +1940,6 @@ class App {
     const content=document.getElementById('modal-content');
     const backdrop=document.getElementById('modal-backdrop');
     content.classList.remove('sheet-mode');
-    content.classList.remove('slide-in');
-    if(this._closeTimer){clearTimeout(this._closeTimer);this._closeTimer=null;}
-    this._modalGen=(this._modalGen||0)+1;
-    content.style.transform=''; content.style.transition=''; content.style.opacity='';
     content.innerHTML=`
       <div class="modal-topbar">
         <button class="modal-topbar-btn" id="modal-close-btn">✕</button>
@@ -1952,10 +2003,6 @@ class App {
     const content=document.getElementById('modal-content');
     const backdrop=document.getElementById('modal-backdrop');
     content.classList.remove('sheet-mode');
-    content.classList.remove('slide-in');
-    if(this._closeTimer){clearTimeout(this._closeTimer);this._closeTimer=null;}
-    this._modalGen=(this._modalGen||0)+1;
-    content.style.transform=''; content.style.transition=''; content.style.opacity='';
     content.innerHTML=`
       <div class="modal-topbar">
         <button class="modal-topbar-btn" id="modal-close-btn">✕</button>
@@ -2068,10 +2115,6 @@ class App {
     const content=document.getElementById('modal-content');
     const backdrop=document.getElementById('modal-backdrop');
     content.classList.remove('sheet-mode');
-    content.classList.remove('slide-in');
-    if(this._closeTimer){clearTimeout(this._closeTimer);this._closeTimer=null;}
-    this._modalGen=(this._modalGen||0)+1;
-    content.style.transform=''; content.style.transition=''; content.style.opacity='';
     content.innerHTML=`
       <div class="modal-topbar">
         <button class="modal-topbar-btn" id="modal-close-btn">✕</button>
@@ -2310,27 +2353,8 @@ class App {
     const content=document.getElementById('modal-content');
     const overlay=document.getElementById('modal-overlay');
     const backdrop=document.getElementById('modal-backdrop');
-    if(!content) { if(cb) cb(); return; }
-    // Cancel any in-flight close timer from a previous call
-    if(this._closeTimer) { clearTimeout(this._closeTimer); this._closeTimer=null; }
-    // Increment generation so the timer below knows if a NEW modal opened before it fires
-    this._modalGen = (this._modalGen||0) + 1;
-    const myGen = this._modalGen;
-    // Reset all residual styles immediately
-    content.style.transform=''; content.style.transition=''; content.style.opacity='';
-    content.classList.remove('slide-in');
-    backdrop.classList.remove('visible');
-    this._closeTimer = setTimeout(()=>{
-      this._closeTimer = null;
-      // If a new modal was opened in the meantime (higher gen), don't destroy it
-      if(this._modalGen !== myGen) return;
-      overlay.classList.add('hidden');
-      content.innerHTML='';
-      content.style.transform=''; content.style.transition=''; content.style.opacity='';
-      content.classList.remove('sheet-mode');
-      this._editId=null;
-      if(cb) cb();
-    },300);
+    content.classList.remove('slide-in');backdrop.classList.remove('visible');
+    setTimeout(()=>{overlay.classList.add('hidden');content.innerHTML='';content.classList.remove('sheet-mode');this._editId=null;if(cb)cb();},300);
   }
 
   _attachModalSwipeBack(el,onClose) {
@@ -2406,19 +2430,8 @@ class App {
     const overlay=document.getElementById('modal-overlay');
     const content=document.getElementById('modal-content');
     const backdrop=document.getElementById('modal-backdrop');
-    // Cancel any pending close timer — we're opening a new modal now
-    if(this._closeTimer) { clearTimeout(this._closeTimer); this._closeTimer=null; }
-    this._modalGen = (this._modalGen||0) + 1; // invalidate any stale timer
-    // Full reset before switching to sheet layout
-    content.classList.remove('slide-in');
-    content.style.transform=''; content.style.transition=''; content.style.opacity='';
-    content.classList.remove('sheet-mode');
-    // Force a reflow so the browser registers the style reset before we add sheet-mode
-    void content.offsetHeight;
-    content.classList.add('sheet-mode');
-    content.innerHTML=html;
-    overlay.classList.remove('hidden');
-    backdrop.classList.add('visible');
+    content.classList.add('sheet-mode');content.innerHTML=html;
+    overlay.classList.remove('hidden');backdrop.classList.add('visible');
     requestAnimationFrame(()=>content.classList.add('slide-in'));
     ['modal-close-btn','modal-cancel-btn'].forEach(id=>document.getElementById(id)?.addEventListener('click',()=>this.closeModal()));
     backdrop.addEventListener('click',e=>{if(e.target===backdrop)this.closeModal();},{once:true});
