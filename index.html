@@ -28,13 +28,13 @@
   .header-right{display:flex;align-items:center;gap:6px}
   #version-badge{font-size:10px;padding:4px 9px;border-radius:999px;background:rgba(255,177,31,.16);border:1px solid rgba(255,177,31,.24);color:#ffb11f}
   #main-content{flex:1;overflow-y:auto;overflow-x:hidden;min-height:0}
-  #bottom-nav{height:calc(60px + env(safe-area-inset-bottom,0px));padding-bottom:env(safe-area-inset-bottom,0px);display:flex;align-items:flex-start;flex-shrink:0;border-top:1px solid rgba(255,255,255,.08);z-index:10;width:100%;background:rgba(24,31,56,.92);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+  #bottom-nav{height:calc(86px + env(safe-area-inset-bottom,0px));padding-bottom:env(safe-area-inset-bottom,0px);display:flex;align-items:flex-start;flex-shrink:0;border-top:1px solid rgba(255,255,255,.08);z-index:10;width:100%;background:rgba(24,31,56,.92);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
   body:not(.light-mode) #bottom-nav{background:rgba(24,31,56,.92);border-color:rgba(255,255,255,.08)}
-  .nav-btn{flex:0 0 20%;width:20%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:none;border:none;cursor:pointer;color:#8080a0;font-size:10px;font-weight:600;padding:5px 0 3px;position:relative}
-  .nav-icon-wrap{display:flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:12px}
+  .nav-btn{flex:0 0 20%;width:20%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;background:none;border:none;cursor:pointer;color:#8080a0;font-size:12px;font-weight:600;padding:9px 0 4px;position:relative}
+  .nav-icon-wrap{display:flex;align-items:center;justify-content:center;padding:3px 12px;border-radius:18px}
   .nav-btn.active{color:#ffb11f}
   .nav-fab{flex:0 0 20%;width:20%;display:flex;align-items:center;justify-content:center;border:none;background:none;cursor:pointer;padding:0}
-  .nav-fab-circle{width:48px;height:48px;border-radius:50%;background:linear-gradient(145deg,#ffca55,#ffb11f);display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:300;color:#101426;margin-top:-14px;box-shadow:0 14px 34px rgba(255,177,31,.24)}
+  .nav-fab-circle{width:68px;height:68px;border-radius:50%;background:linear-gradient(145deg,#ffca55,#ffb11f);display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:300;color:#101426;margin-top:-28px;box-shadow:0 14px 34px rgba(255,177,31,.24)}
   .empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:40px 20px;opacity:.7;text-align:center}
   .empty-state .icon{font-size:48px}
   #modal-overlay{display:flex;position:fixed;inset:0;z-index:100;pointer-events:none}
@@ -62,7 +62,7 @@
     <div class="header-right">
       <button id="currency-btn" class="header-btn">TWD</button>
       <button id="theme-toggle-btn" aria-label="切換主題">🌙</button>
-      <span id="version-badge">V4.7</span>
+      <span id="version-badge">V4.1</span>
     </div>
   </header>
   <main id="main-content">

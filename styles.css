@@ -1,4 +1,4 @@
-/* Cost Record PWA — styles.css V4.7 */
+/* Cost Record PWA — styles.css V4.1 */
 /* Google Fonts loaded async via <link> in index.html for instant render */
 :root{
   --bg:#181825;--bg2:#1e1e2e;--bg3:#252538;--bg4:#2e2e45;
@@ -10,7 +10,7 @@
   --blue:#60a5fa;--blue-dim:rgba(96,165,250,0.13);
   --text:#eeeef8;--text2:#8080a0;--text3:#50506a;
   --radius:14px;--radius-sm:9px;--radius-xs:6px;
-  --nav-h:60px;--header-h:44px;
+  --nav-h:84px;--header-h:50px;
   --font-main:'Noto Sans TC',system-ui,-apple-system,sans-serif;--font-mono:'DM Mono','Courier New',monospace;
 }
 body.light-mode{
@@ -99,16 +99,16 @@ input,select,textarea{font-size:16px!important;-webkit-text-size-adjust:100%}
 .nav-btn{
   flex:0 0 20%;       /* exact 1/5 width */
   width:20%;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;
   background:none;border:none;cursor:pointer;color:var(--text3);
   font-size:12px;font-family:var(--font-main);font-weight:600;letter-spacing:.01em;
-  transition:color .2s;padding:5px 0 3px;position:relative;min-width:44px;
+  transition:color .2s;padding:10px 0 5px;position:relative;min-width:44px;
 }
-.nav-btn .icon{font-size:22px;line-height:1}
-.nav-btn span:last-child{font-size:10px;line-height:1;font-weight:600}
+.nav-btn .icon{font-size:36px;line-height:1}
+.nav-btn span:last-child{font-size:13px;line-height:1;font-weight:600}
 .nav-btn.active{color:var(--amber)}
 .nav-btn.active .nav-icon-wrap{background:var(--amber-dim);border-radius:16px;padding:2px 10px}
-.nav-icon-wrap{display:flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:12px;transition:background .2s}
+.nav-icon-wrap{display:flex;align-items:center;justify-content:center;padding:3px 12px;border-radius:18px;transition:background .2s}
 /* FAB — large centered add button floating above nav */
 .nav-fab{
   flex:0 0 20%;       /* exact 1/5 width */
@@ -117,13 +117,13 @@ input,select,textarea{font-size:16px!important;-webkit-text-size-adjust:100%}
   cursor:pointer;padding:0;border:none;background:none;
 }
 .nav-fab-circle{
-  width:48px;height:48px;border-radius:50%;
+  width:64px;height:64px;border-radius:50%;
   background:linear-gradient(145deg,var(--amber-light),var(--amber));
   display:flex;align-items:center;justify-content:center;
-  font-size:24px;font-weight:300;color:var(--bg);
+  font-size:34px;font-weight:300;color:var(--bg);
   box-shadow:0 4px 28px var(--amber-glow),0 2px 8px rgba(0,0,0,.4);
   transition:transform .18s,box-shadow .18s;
-  margin-top:-14px;
+  margin-top:-26px;
 }
 .nav-fab:active .nav-fab-circle{transform:scale(.91);box-shadow:0 2px 10px var(--amber-glow)}
 
@@ -135,46 +135,46 @@ input,select,textarea{font-size:16px!important;-webkit-text-size-adjust:100%}
 .cal-enter-right{animation:calSlideInRight .22s ease forwards}
 .cal-exit-left{transform:translateX(-18%);opacity:0;pointer-events:none;transition:transform .14s ease,opacity .14s ease}
 .cal-exit-right{transform:translateX(18%);opacity:0;pointer-events:none;transition:transform .14s ease,opacity .14s ease}
-.month-nav{display:flex;align-items:center;justify-content:space-between;padding:5px 10px 2px}
-.month-nav-title{font-size:13px;font-weight:700;letter-spacing:.02em}
+.month-nav{display:flex;align-items:center;justify-content:space-between;padding:8px 12px 3px}
+.month-nav-title{font-size:17px;font-weight:700;letter-spacing:.02em}
 .month-nav-btns{display:flex;align-items:center;gap:5px}
 .icon-btn{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-xs);color:var(--text2);cursor:pointer;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:13px;transition:all .2s}
 .icon-btn:hover{background:var(--amber-dim);border-color:var(--amber);color:var(--amber)}
 .today-btn{background:var(--amber-dim);border:1px solid rgba(245,158,11,.3);border-radius:var(--radius-xs);color:var(--amber);cursor:pointer;padding:0 8px;height:26px;font-size:10px;font-weight:600;font-family:var(--font-main);transition:background .2s}
-.calendar-wrap{padding:1px 6px 2px}
-.cal-grid-wk{display:grid;grid-template-columns:24px repeat(7,1fr);gap:0;min-height:0}
-.cal-dow{text-align:center;font-size:9px;color:var(--text3);padding:2px 0;font-weight:600}
+.calendar-wrap{padding:2px 8px 4px}
+.cal-grid-wk{display:grid;grid-template-columns:28px repeat(7,1fr);gap:1px;min-height:220px}
+.cal-dow{text-align:center;font-size:10px;color:var(--text3);padding:3px 0;font-weight:600}
 .cal-wk-hdr{font-size:9px;color:var(--text3);text-align:center;padding:3px 0;font-weight:600;opacity:.7}
-.cal-wk-num{font-size:8px;color:var(--text3);text-align:center;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);opacity:.7}
-.cal-day{display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:6px;cursor:pointer;transition:background .15s;min-height:22px;padding:0}
+.cal-wk-num{font-size:9px;color:var(--text3);text-align:center;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);opacity:.7}
+.cal-day{display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:7px;cursor:pointer;transition:background .15s;min-height:30px;padding:1px 0}
 .cal-day:hover{background:var(--bg3)}
 .cal-day.other-month .cal-day-num{color:var(--text3);opacity:.25}
-.cal-day-num{font-size:11px;font-weight:500;line-height:1}
+.cal-day-num{font-size:14px;font-weight:500;line-height:1}
 .cal-day.is-sun .cal-day-num{color:var(--red)}
 .cal-day.is-sat .cal-day-num{color:var(--blue)}
 .cal-day.selected{background:var(--amber-dim)}
 .cal-day.selected .cal-day-num{color:var(--amber);font-weight:700}
-.cal-day.today .cal-day-num{border:1.5px solid var(--red);color:var(--red);width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:9px}
+.cal-day.today .cal-day-num{border:1.5px solid var(--red);color:var(--red);width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px}
 .cal-day.today.selected .cal-day-num{background:var(--amber);border-color:var(--amber);color:var(--bg)}
-.cal-dot-wrap{display:flex;gap:1px;margin-top:0;min-height:2px}
+.cal-dot-wrap{display:flex;gap:1px;margin-top:1px;min-height:3px}
 .cal-dot{width:3px;height:3px;border-radius:50%;background:var(--amber)}
 
 /* Month Summary */
-.month-summary{margin:2px 6px 3px;padding:5px 9px;background:var(--card);border-radius:var(--radius-sm);border:1px solid var(--border)}
+.month-summary{margin:3px 8px 4px;padding:8px 11px;background:var(--card);border-radius:var(--radius-sm);border:1px solid var(--border)}
 .month-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;text-align:center}
-.stat-label{font-size:8px;color:var(--text3);margin-bottom:0;text-transform:uppercase;letter-spacing:.04em}
-.stat-value{font-family:var(--font-mono);font-size:12px;font-weight:500;color:var(--text)}
-.stat-value.big{font-size:14px;color:var(--amber)}
-.cat-breakdown{margin-top:3px;display:flex;flex-direction:column;gap:2px}
+.stat-label{font-size:9px;color:var(--text3);margin-bottom:1px;text-transform:uppercase;letter-spacing:.04em}
+.stat-value{font-family:var(--font-mono);font-size:15px;font-weight:500;color:var(--text)}
+.stat-value.big{font-size:18px;color:var(--amber)}
+.cat-breakdown{margin-top:6px;display:flex;flex-direction:column;gap:4px}
 .cat-row{display:flex;align-items:center;gap:6px}
 .cat-row-icon{font-size:14px;flex-shrink:0;width:16px;text-align:center}
-.cat-row-name{font-size:10px;color:var(--text2);width:48px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cat-row-name{font-size:11px;color:var(--text2);width:56px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cat-row-bar-wrap{flex:1;height:4px;background:var(--bg3);border-radius:2px;overflow:hidden}
 .cat-row-bar{height:100%;background:var(--amber);border-radius:2px;transition:width .4s ease}
-.cat-row-amount{font-family:var(--font-mono);font-size:10px;color:var(--text2);min-width:46px;text-align:right}
+.cat-row-amount{font-family:var(--font-mono);font-size:11px;color:var(--text2);min-width:52px;text-align:right}
 .pending-badge{display:inline-flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:14px;font-weight:600;color:#fff;background:var(--red);border-radius:20px;padding:1px 9px;cursor:pointer;animation:pulse-red 1.8s infinite}
 @keyframes pulse-red{0%,100%{box-shadow:0 0 0 0 rgba(244,63,94,.4)}50%{box-shadow:0 0 0 5px rgba(244,63,94,0)}}
-.day-panel-header{display:flex;align-items:center;justify-content:space-between;padding:5px 8px 5px;position:sticky;top:0;background:var(--bg);z-index:4;border-bottom:1px solid var(--border)}
+.day-panel-header{display:flex;align-items:center;justify-content:space-between;padding:8px 10px 6px;position:sticky;top:0;background:var(--bg);z-index:4;border-bottom:1px solid var(--border)}
 .day-panel-title{font-size:14px;font-weight:600;display:flex;align-items:center;gap:6px;color:var(--text2)}
 .day-total-amt{color:var(--amber);font-family:var(--font-mono);font-size:14px;font-weight:600}
 .btn-day-action{display:flex;align-items:center;gap:4px;border:none;border-radius:16px;cursor:pointer;font-size:11px;font-weight:600;font-family:var(--font-main);padding:5px 10px;transition:all .2s}
@@ -1014,7 +1014,7 @@ body.light-mode .edit-amount-display:focus-within{
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   V4.7 Usability refinement
+   V4.1 Usability refinement
    Focus: simpler layout, clearer actions, lighter visual weight
    ═══════════════════════════════════════════════════════════════ */
 :root{
@@ -1433,12 +1433,6 @@ body.light-mode .inv-items-section{background:var(--panel)}
     grid-template-columns:1fr;
   }
 }
-
-/* Stats content slide animation */
-@keyframes statsSlideInLeft{from{transform:translateX(30%);opacity:0}to{transform:translateX(0);opacity:1}}
-@keyframes statsSlideInRight{from{transform:translateX(-30%);opacity:0}to{transform:translateX(0);opacity:1}}
-.stats-slide-left{animation:statsSlideInLeft .22s cubic-bezier(.25,.46,.45,.94) both}
-.stats-slide-right{animation:statsSlideInRight .22s cubic-bezier(.25,.46,.45,.94) both}
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{
     animation:none !important;
@@ -1446,65 +1440,3 @@ body.light-mode .inv-items-section{background:var(--panel)}
     scroll-behavior:auto !important;
   }
 }
-/* ══ V4.7 COMPACT OVERRIDES ══
-   These override V4.1 enhanced-style section which re-enlarges things.
-   iPhone 15 Pro Max: 932px logical height.
-   Goal: home-top ≈ 25dvh, home-bottom day-list ≈ 25dvh visible
-*/
-
-/* ── Layout: enforce 1/4 screen splits ── */
-.home-top{
-  height:25dvh;
-  flex-shrink:0;
-  overflow:hidden;
-}
-.home-bottom{
-  height:25dvh;
-  flex-shrink:0;
-  overflow-y:auto;
-  -webkit-overflow-scrolling:touch;
-  overscroll-behavior-y:contain;
-}
-/* Override V4.1 enlarged nav */
-.nav-btn{padding:4px 0 3px !important;gap:2px !important}
-.nav-btn span:last-child{font-size:10px !important}
-.nav-btn .icon,.nav-btn .nav-icon-wrap span{font-size:22px !important}
-.nav-fab-circle{width:48px !important;height:48px !important;font-size:24px !important;margin-top:-14px !important}
-
-/* ── Calendar: fit 6 rows + header into 25dvh minus nav+summary ── */
-/* 25dvh ≈ 233px; month-nav~22px; summary~44px; dow-row~16px → cal rows get ~150px / 6 ≈ 25px each */
-.month-nav{padding:4px 10px 2px !important}
-.month-nav-title{font-size:12px !important}
-.calendar-wrap{padding:1px 5px 2px !important}
-.cal-grid-wk{gap:0 !important}
-.cal-dow,.cal-wk-hdr,.cal-wk-num{font-size:9px !important;padding:1px 0 !important}
-.cal-day{min-height:20px !important;border-radius:5px !important;padding:0 !important}
-.cal-day-num{font-size:11px !important}
-.cal-day.today .cal-day-num{width:17px !important;height:17px !important;font-size:9px !important}
-/* Override big cal-day from V4.1 standalone block */
-
-/* ── Month summary: compact ── */
-.month-summary{margin:2px 6px 2px !important;padding:4px 8px !important}
-.stat-label{font-size:8px !important}
-.stat-value{font-size:11px !important}
-.stat-value.big{font-size:13px !important}
-.cat-breakdown{margin-top:3px !important;gap:2px !important}
-.cat-row-name{font-size:9px !important;width:42px !important}
-.cat-row-amount{font-size:9px !important;min-width:40px !important}
-.cat-row-icon{font-size:12px !important;width:14px !important}
-
-/* ── Day panel: compact ── */
-.day-panel-header{padding:5px 8px !important}
-.day-panel-title{font-size:12px !important}
-.btn-day-action{min-height:28px !important;padding:5px 9px !important;font-size:10px !important}
-
-/* ── Expense cards: compact ── */
-.expense-list{gap:5px !important;padding:5px 8px 10px !important}
-.ref-card{padding:8px 10px !important;gap:8px !important;border-radius:12px !important}
-.ref-card:hover{transform:none !important}
-.ref-card-icon{width:34px !important;height:34px !important;font-size:17px !important}
-.ref-card-title{font-size:12px !important}
-.ref-card-sub{font-size:10px !important;margin-top:1px !important}
-.ref-card-amount{font-size:13px !important}
-.ref-card-tags{margin-top:3px !important;gap:3px !important}
-
