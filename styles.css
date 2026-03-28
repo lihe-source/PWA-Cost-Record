@@ -1,4 +1,4 @@
-/* Cost Record PWA — styles.css V4.6 */
+/* Cost Record PWA — styles.css V4.7 */
 /* Google Fonts loaded async via <link> in index.html for instant render */
 :root{
   --bg:#181825;--bg2:#1e1e2e;--bg3:#252538;--bg4:#2e2e45;
@@ -1014,7 +1014,7 @@ body.light-mode .edit-amount-display:focus-within{
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   V4.6 Usability refinement
+   V4.7 Usability refinement
    Focus: simpler layout, clearer actions, lighter visual weight
    ═══════════════════════════════════════════════════════════════ */
 :root{
@@ -1446,3 +1446,65 @@ body.light-mode .inv-items-section{background:var(--panel)}
     scroll-behavior:auto !important;
   }
 }
+/* ══ V4.7 COMPACT OVERRIDES ══
+   These override V4.1 enhanced-style section which re-enlarges things.
+   iPhone 15 Pro Max: 932px logical height.
+   Goal: home-top ≈ 25dvh, home-bottom day-list ≈ 25dvh visible
+*/
+
+/* ── Layout: enforce 1/4 screen splits ── */
+.home-top{
+  height:25dvh;
+  flex-shrink:0;
+  overflow:hidden;
+}
+.home-bottom{
+  height:25dvh;
+  flex-shrink:0;
+  overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior-y:contain;
+}
+/* Override V4.1 enlarged nav */
+.nav-btn{padding:4px 0 3px !important;gap:2px !important}
+.nav-btn span:last-child{font-size:10px !important}
+.nav-btn .icon,.nav-btn .nav-icon-wrap span{font-size:22px !important}
+.nav-fab-circle{width:48px !important;height:48px !important;font-size:24px !important;margin-top:-14px !important}
+
+/* ── Calendar: fit 6 rows + header into 25dvh minus nav+summary ── */
+/* 25dvh ≈ 233px; month-nav~22px; summary~44px; dow-row~16px → cal rows get ~150px / 6 ≈ 25px each */
+.month-nav{padding:4px 10px 2px !important}
+.month-nav-title{font-size:12px !important}
+.calendar-wrap{padding:1px 5px 2px !important}
+.cal-grid-wk{gap:0 !important}
+.cal-dow,.cal-wk-hdr,.cal-wk-num{font-size:9px !important;padding:1px 0 !important}
+.cal-day{min-height:20px !important;border-radius:5px !important;padding:0 !important}
+.cal-day-num{font-size:11px !important}
+.cal-day.today .cal-day-num{width:17px !important;height:17px !important;font-size:9px !important}
+/* Override big cal-day from V4.1 standalone block */
+
+/* ── Month summary: compact ── */
+.month-summary{margin:2px 6px 2px !important;padding:4px 8px !important}
+.stat-label{font-size:8px !important}
+.stat-value{font-size:11px !important}
+.stat-value.big{font-size:13px !important}
+.cat-breakdown{margin-top:3px !important;gap:2px !important}
+.cat-row-name{font-size:9px !important;width:42px !important}
+.cat-row-amount{font-size:9px !important;min-width:40px !important}
+.cat-row-icon{font-size:12px !important;width:14px !important}
+
+/* ── Day panel: compact ── */
+.day-panel-header{padding:5px 8px !important}
+.day-panel-title{font-size:12px !important}
+.btn-day-action{min-height:28px !important;padding:5px 9px !important;font-size:10px !important}
+
+/* ── Expense cards: compact ── */
+.expense-list{gap:5px !important;padding:5px 8px 10px !important}
+.ref-card{padding:8px 10px !important;gap:8px !important;border-radius:12px !important}
+.ref-card:hover{transform:none !important}
+.ref-card-icon{width:34px !important;height:34px !important;font-size:17px !important}
+.ref-card-title{font-size:12px !important}
+.ref-card-sub{font-size:10px !important;margin-top:1px !important}
+.ref-card-amount{font-size:13px !important}
+.ref-card-tags{margin-top:3px !important;gap:3px !important}
+
