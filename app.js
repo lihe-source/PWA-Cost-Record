@@ -1,5 +1,5 @@
 /* ─────────────────────────────────────────────────────────────
-   Cost Record PWA — app.js  V4.5
+   Cost Record PWA — app.js  V4.6
    Modules: DataStore · DriveService · CurrencyService · App
 ───────────────────────────────────────────────────────────── */
 'use strict';
@@ -91,7 +91,6 @@ class DataStore {
         // Migrate: ensure settings has currency
         if (!d.settings) d.settings = {};
         if (!d.settings.defaultCurrency) d.settings.defaultCurrency = 'TWD';
-        if (d.settings.autoBackupEnabled === undefined) d.settings.autoBackupEnabled = false;
         if (!d.storeMapping) d.storeMapping = [];
         return d;
       }
@@ -109,7 +108,7 @@ class DataStore {
       })),
       settings: {
         geminiApiKey: '', geminiModel: 'gemini-1.5-flash',
-        googleClientId: '', defaultCurrency: 'TWD', autoBackupEnabled: false
+        googleClientId: '', defaultCurrency: 'TWD'
       },
       importedInvoiceNos: [], lastSync: null, storeMapping: []
     };
@@ -346,24 +345,15 @@ class DriveService {
     const folderId = await this.getFolderId();
     const q = encodeURIComponent(`'${folderId}' in parents and name contains 'backup' and trashed=false`);
     const res = await this._fetch(
-      `https://www.googleapis.com/drive/v3/files?q=${q}&orderBy=modifiedTime desc&pageSize=20&fields=files(id,name,modifiedTime,size)`
+      `https://www.googleapis.com/drive/v3/files?q=${q}&orderBy=modifiedTime desc&pageSize=10&fields=files(id,name,modifiedTime,size)`
     );
     const d = await res.json();
-    const files = d.files || [];
-    // Return sorted newest first, max 5 manual + 5 auto = up to 10
-    const manuals = files.filter(f => f.name.includes('-manual-')).slice(0,5);
-    const autos   = files.filter(f => f.name.includes('-auto-')).slice(0,5);
-    // Also handle legacy backups (no tag in name) as manual
-    const legacy  = files.filter(f => !f.name.includes('-manual-') && !f.name.includes('-auto-')).slice(0,5);
-    const combined = [...manuals, ...autos, ...legacy];
-    combined.sort((a,b) => new Date(b.modifiedTime)-new Date(a.modifiedTime));
-    return combined.slice(0,10);
+    return d.files || [];
   }
 
-  async uploadBackup(data, type='manual') {
+  async uploadBackup(data) {
     const folderId = await this.getFolderId();
-    const tag = type === 'auto' ? 'auto' : 'manual';
-    const fileName = `backup-${tag}-${new Date().toISOString().slice(0,19).replace(/[T:]/g,'-')}.json`;
+    const fileName = `backup-${new Date().toISOString().slice(0,19).replace(/[T:]/g,'-')}.json`;
     const content = JSON.stringify(data, null, 2);
     const boundary = '-------cost_record_boundary';
     const body = [
@@ -377,14 +367,13 @@ class DriveService {
       headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
       body
     });
-    // Prune old backups — keep 5 manual + 5 auto
+    // Prune old backups — keep only 5
     try {
       const all = await this.listBackups();
-      const manuals = all.filter(f => f.name.includes('-manual-'));
-      const autos   = all.filter(f => f.name.includes('-auto-'));
-      const toDelete = [...manuals.slice(5), ...autos.slice(5)];
-      for (const f of toDelete) {
-        await this._fetch(`https://www.googleapis.com/drive/v3/files/${f.id}`, { method: 'DELETE' }).catch(()=>{});
+      if (all.length > 5) {
+        for (const f of all.slice(5)) {
+          await this._fetch(`https://www.googleapis.com/drive/v3/files/${f.id}`, { method: 'DELETE' }).catch(()=>{});
+        }
       }
     } catch(e) {}
     return res.json();
@@ -651,8 +640,6 @@ class App {
     this.renderView();
     const {googleClientId}=this.store.data.settings;
     if(googleClientId) this.drive.init(googleClientId).catch(()=>{});
-    // Schedule daily auto-backup at 23:59:59
-    this._scheduleAutoBackup();
     // Fetch live exchange rates on startup (non-blocking)
     this.currencySvc.getRates('TWD').then(rates=>{ this._liveRates=rates; }).catch(()=>{});
     // CSV input
@@ -681,33 +668,6 @@ class App {
     document.getElementById('currency-btn')?.addEventListener('click',()=>this._openCurrencyPicker());
     // Global swipe-right → close current full-screen modal
     this._setupGlobalSwipeBack();
-  }
-
-  _scheduleAutoBackup() {
-    const msUntilTarget = () => {
-      const now = new Date();
-      const target = new Date(now);
-      target.setHours(23, 59, 59, 0);
-      if (target <= now) target.setDate(target.getDate() + 1);
-      return target - now;
-    };
-    const runAutoBackup = async () => {
-      try {
-        const s = this.store.data.settings;
-        if (!s.autoBackupEnabled || !s.googleClientId) return;
-        await this.drive.init(s.googleClientId);
-        const data = this.store.export();
-        data._exportedAt = new Date().toISOString();
-        data._backupType = 'auto';
-        await this.drive.uploadBackup(data, 'auto');
-        this.store.data.lastAutoBackup = new Date().toLocaleString('zh-TW');
-        this.store.save();
-        this.toast('✅ 自動備份完成', 'success');
-      } catch(e) { /* silent fail */ }
-      // Schedule next day
-      setTimeout(runAutoBackup, msUntilTarget());
-    };
-    setTimeout(runAutoBackup, msUntilTarget());
   }
 
   _applyTheme(dark) {
@@ -1175,27 +1135,6 @@ class App {
     </div>`;
   }
 
-  _changeStatsMonth(delta) {
-    // dir: -1=prev(right slide), +1=next(left slide)
-    const dir = delta > 0 ? 'left' : 'right';
-    this.statsMonth+=delta;
-    if(this.statsMonth<1){this.statsMonth=12;this.statsYear--;}
-    if(this.statsMonth>12){this.statsMonth=1;this.statsYear++;}
-    this.statsCustom=false;
-    const lbl=document.getElementById('stats-month-label');
-    if(lbl) lbl.textContent=`${this.statsYear} 年 ${this.statsMonth} 月`;
-    document.getElementById('stats-custom-range')?.classList.remove('open');
-    document.getElementById('stats-custom-btn')?.classList.remove('active');
-    this._renderStats(this.store.getByMonth(this.statsYear,this.statsMonth));
-    // Trigger slide animation on stats-content
-    const el=document.getElementById('stats-content');
-    if(el){
-      el.classList.remove('stats-slide-left','stats-slide-right');
-      void el.offsetWidth; // force reflow
-      el.classList.add(`stats-slide-${dir}`);
-    }
-  }
-
   _attachStatsSwipe(el) {
     if(!el) return;
     let sx=null, sy=null, fired=false;
@@ -1210,14 +1149,33 @@ class App {
       if(Math.abs(dx)>50 && Math.abs(dx)>Math.abs(dy)*2) {
         fired=true;
         this._statsSwipeCooling=true;
-        const delta = dx<0 ? 1 : -1;
-        this._changeStatsMonth(delta);
+        this._changeStatsMonth(dx<0 ? 1 : -1);
         setTimeout(()=>{this._statsSwipeCooling=false;},500);
       }
       sx=null; sy=null;
     };
     el.addEventListener('touchstart',onStart,{passive:true});
     el.addEventListener('touchend',onEnd,{passive:true});
+  }
+
+  _changeStatsMonth(delta) {
+    const dir = delta > 0 ? 'left' : 'right';
+    this.statsMonth += delta;
+    if(this.statsMonth<1){this.statsMonth=12;this.statsYear--;}
+    if(this.statsMonth>12){this.statsMonth=1;this.statsYear++;}
+    this.statsCustom = false;
+    const lbl = document.getElementById('stats-month-label');
+    if(lbl) lbl.textContent = `${this.statsYear} 年 ${this.statsMonth} 月`;
+    document.getElementById('stats-custom-range')?.classList.remove('open');
+    document.getElementById('stats-custom-btn')?.classList.remove('active');
+    this._renderStats(this.store.getByMonth(this.statsYear, this.statsMonth));
+    // Animate stats-content
+    const el = document.getElementById('stats-content');
+    if(el){
+      el.classList.remove('stats-slide-left','stats-slide-right');
+      void el.offsetWidth; // force reflow
+      el.classList.add('stats-slide-'+dir);
+    }
   }
 
   _statsFromDefault() { return `${this.statsYear}-${String(this.statsMonth).padStart(2,'0')}-01`; }
@@ -1790,20 +1748,8 @@ class App {
           </button>
         </div>
         <div id="drive-backup-list"></div>
-        <!-- Auto-backup toggle -->
-        <div style="background:var(--bg3);border-radius:var(--radius-sm);padding:12px 14px;display:flex;align-items:center;gap:12px;">
-          <div style="flex:1;">
-            <div style="font-size:13px;font-weight:600;">每日自動備份</div>
-            <div style="font-size:11px;color:var(--text2);margin-top:2px;">每天 23:59 自動備份至雲端${s.lastAutoBackup?'<br><span style="color:var(--green);font-size:10px;">上次自動備份：'+s.lastAutoBackup+'</span>':''}</div>
-          </div>
-          <label style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;">
-            <input type="checkbox" id="auto-backup-toggle" style="opacity:0;width:0;height:0;" ${s.autoBackupEnabled?'checked':''}>
-            <span class="toggle-track"></span>
-          </label>
-        </div>
         <div style="font-size:10px;color:var(--text3);line-height:1.7;padding:8px;background:var(--bg3);border-radius:var(--radius-sm);">
-          📂 備份存放於 Google Drive 的 <strong>#PWA-Cost-Record</strong> 資料夾<br>
-          手動備份 + 自動備份各保留最新 5 份（共最多 10 份）
+          📂 備份存放於 Google Drive 的 <strong>#PWA-Cost-Record</strong> 資料夾，最多保留 5 份。
         </div>
       </div>`;
     overlay.classList.remove('hidden'); backdrop.classList.add('visible');
@@ -1839,11 +1785,6 @@ class App {
     });
     document.getElementById('drive-upload-btn')?.addEventListener('click', () => this._driveUploadFromPage());
     document.getElementById('drive-list-btn')?.addEventListener('click', () => this._driveListModal());
-    document.getElementById('auto-backup-toggle')?.addEventListener('change', (ev) => {
-      this.store.data.settings.autoBackupEnabled = ev.target.checked;
-      this.store.save();
-      this.toast(ev.target.checked ? '✅ 自動備份已開啟' : '自動備份已關閉', 'info');
-    });
   }
 
   async _driveUploadFromPage() {
@@ -1855,7 +1796,7 @@ class App {
       if (!cid) throw new Error('請先填寫 Client ID 並儲存');
       await this.drive.init(cid);
       const data=this.store.export(); data._exportedAt=new Date().toISOString();
-      await this.drive.uploadBackup(data, 'manual');
+      await this.drive.uploadBackup(data);
       this.store.data.lastSync=new Date().toLocaleString('zh-TW'); this.store.save();
       this.toast('✅ 已上傳至 Google Drive','success');
       const sub=document.querySelector('#open-drive-settings-btn .settings-card-sub');
@@ -1884,20 +1825,16 @@ class App {
         listEl.innerHTML='<p style="font-size:12px;color:var(--text3);text-align:center;padding:20px;">尚無雲端備份</p>';
         return;
       }
-      // Show file list with manual/auto labels
+      // Show file list immediately — no pre-download of contents
       const fmtSize = b => b > 1024*1024 ? (b/1024/1024).toFixed(1)+'MB' : b > 1024 ? (b/1024).toFixed(0)+'KB' : b+'B';
-      const getType = name => name.includes('-auto-') ? '🔄 自動備份' : '🖐 手動備份';
-      const getTypeColor = name => name.includes('-auto-') ? 'var(--blue)' : 'var(--amber)';
       listEl.innerHTML=`
-        <div style="font-size:12px;color:var(--text2);margin-bottom:8px;padding:0 2px;">共 ${files.length} 份備份，由新到舊排序，點擊還原</div>
+        <div class="drive-list-title" style="font-size:12px;color:var(--text2);margin-bottom:6px;">點擊選擇要還原的版本</div>
         ${files.map((f,i)=>`
           <div class="drive-version-item" data-file-id="${f.id}" style="cursor:pointer;">
             <div style="flex:1">
-              <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
-                <span style="font-size:10px;font-weight:700;color:${getTypeColor(f.name)};background:${getTypeColor(f.name)}22;border-radius:4px;padding:1px 6px;">${getType(f.name)}</span>
-                ${i===0?'<span style="font-size:10px;background:var(--green);color:#fff;border-radius:4px;padding:1px 6px;">最新</span>':''}
+              <div class="drive-version-time">${new Date(f.modifiedTime).toLocaleString('zh-TW')}
+                ${i===0?'<span class="drive-version-badge" style="margin-left:6px;background:var(--green);color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;">最新</span>':''}
               </div>
-              <div class="drive-version-time">${new Date(f.modifiedTime).toLocaleString('zh-TW')}</div>
               <div class="drive-version-info">${f.size ? fmtSize(+f.size) : ''}</div>
             </div>
             <span style="font-size:18px;color:var(--text3)">›</span>
