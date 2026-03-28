@@ -1,5 +1,5 @@
 /* ─────────────────────────────────────────────────────────────
-   Cost Record PWA — app.js  V4.1
+   Cost Record PWA — app.js  V4.8
    Modules: DataStore · DriveService · CurrencyService · App
 ───────────────────────────────────────────────────────────── */
 'use strict';
@@ -607,6 +607,7 @@ class App {
     this._swipeStartX = null;
     this._swipeStartY = null;
     this._swipeCooling = false;
+    this._statsSwipeCooling = false;
     // Default is light; only dark when explicitly saved as 'dark'
     // Theme already applied by inline <script> in <head>; read actual DOM state
     this._isDarkMode = !document.body.classList.contains('light-mode');
@@ -1134,6 +1135,49 @@ class App {
     </div>`;
   }
 
+  _attachStatsSwipe(el) {
+    if(!el) return;
+    let sx=null, sy=null, fired=false;
+    const onStart = e => {
+      if(this._statsSwipeCooling) return;
+      sx=e.touches[0].clientX; sy=e.touches[0].clientY; fired=false;
+    };
+    const onEnd = e => {
+      if(sx===null||fired||this._statsSwipeCooling) return;
+      const dx=e.changedTouches[0].clientX-sx;
+      const dy=e.changedTouches[0].clientY-sy;
+      if(Math.abs(dx)>50 && Math.abs(dx)>Math.abs(dy)*2) {
+        fired=true;
+        this._statsSwipeCooling=true;
+        this._changeStatsMonth(dx<0 ? 1 : -1);
+        setTimeout(()=>{this._statsSwipeCooling=false;},500);
+      }
+      sx=null; sy=null;
+    };
+    el.addEventListener('touchstart',onStart,{passive:true});
+    el.addEventListener('touchend',onEnd,{passive:true});
+  }
+
+  _changeStatsMonth(delta) {
+    const dir = delta > 0 ? 'left' : 'right';
+    this.statsMonth += delta;
+    if(this.statsMonth<1){this.statsMonth=12;this.statsYear--;}
+    if(this.statsMonth>12){this.statsMonth=1;this.statsYear++;}
+    this.statsCustom = false;
+    const lbl = document.getElementById('stats-month-label');
+    if(lbl) lbl.textContent = `${this.statsYear} 年 ${this.statsMonth} 月`;
+    document.getElementById('stats-custom-range')?.classList.remove('open');
+    document.getElementById('stats-custom-btn')?.classList.remove('active');
+    this._renderStats(this.store.getByMonth(this.statsYear, this.statsMonth));
+    // Animate stats-content
+    const el = document.getElementById('stats-content');
+    if(el){
+      el.classList.remove('stats-slide-left','stats-slide-right');
+      void el.offsetWidth; // force reflow
+      el.classList.add('stats-slide-'+dir);
+    }
+  }
+
   _statsFromDefault() { return `${this.statsYear}-${String(this.statsMonth).padStart(2,'0')}-01`; }
 
   _renderStats(expenses) {
@@ -1399,22 +1443,8 @@ class App {
 
   _attachStatsEvents() {
     this._renderStats(this.store.getByMonth(this.statsYear,this.statsMonth));
-    document.getElementById('stats-prev')?.addEventListener('click',()=>{
-      this.statsMonth--;if(this.statsMonth<1){this.statsMonth=12;this.statsYear--;}
-      this.statsCustom=false;
-      document.getElementById('stats-month-label').textContent=`${this.statsYear} 年 ${this.statsMonth} 月`;
-      document.getElementById('stats-custom-range')?.classList.remove('open');
-      document.getElementById('stats-custom-btn')?.classList.remove('active');
-      this._renderStats(this.store.getByMonth(this.statsYear,this.statsMonth));
-    });
-    document.getElementById('stats-next')?.addEventListener('click',()=>{
-      this.statsMonth++;if(this.statsMonth>12){this.statsMonth=1;this.statsYear++;}
-      this.statsCustom=false;
-      document.getElementById('stats-month-label').textContent=`${this.statsYear} 年 ${this.statsMonth} 月`;
-      document.getElementById('stats-custom-range')?.classList.remove('open');
-      document.getElementById('stats-custom-btn')?.classList.remove('active');
-      this._renderStats(this.store.getByMonth(this.statsYear,this.statsMonth));
-    });
+    document.getElementById('stats-prev')?.addEventListener('click',()=>this._changeStatsMonth(-1));
+    document.getElementById('stats-next')?.addEventListener('click',()=>this._changeStatsMonth(1));
     document.getElementById('stats-custom-btn')?.addEventListener('click',()=>{
       this.statsCustom=!this.statsCustom;
       document.getElementById('stats-custom-range')?.classList.toggle('open',this.statsCustom);
@@ -1428,6 +1458,9 @@ class App {
       document.getElementById('stats-month-label').textContent=`${from}~${to}`;
       this._renderStats(exps);
     });
+    // Stats swipe: left=next month, right=prev month
+    this._attachStatsSwipe(document.getElementById('main-content'));
+
     document.getElementById('stats-content')?.addEventListener('click',e=>{
       const sortBtn=e.target.closest('.stats-sort-btn');
       if(sortBtn&&sortBtn.dataset.sort){
