@@ -1,4 +1,4 @@
-/* Cost Record PWA — styles.css V4.8 */
+/* Cost Record PWA — styles.css V4.9 */
 /* Google Fonts loaded async via <link> in index.html for instant render */
 :root{
   --bg:#181825;--bg2:#1e1e2e;--bg3:#252538;--bg4:#2e2e45;
@@ -1014,7 +1014,7 @@ body.light-mode .edit-amount-display:focus-within{
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   V4.8 Usability refinement
+   V4.9 Usability refinement
    Focus: simpler layout, clearer actions, lighter visual weight
    ═══════════════════════════════════════════════════════════════ */
 :root{
@@ -1446,7 +1446,7 @@ body.light-mode .inv-items-section{background:var(--panel)}
     scroll-behavior:auto !important;
   }
 }
-/* ══ V4.8 COMPACT OVERRIDES ══
+/* ══ V4.9 COMPACT OVERRIDES ══
    These override V4.1 enhanced-style section which re-enlarges things.
    iPhone 15 Pro Max: 932px logical height.
    Goal: home-top ≈ 25dvh, home-bottom day-list ≈ 25dvh visible
@@ -1473,25 +1473,25 @@ body.light-mode .inv-items-section{background:var(--panel)}
 .nav-fab-circle{width:48px !important;height:48px !important;font-size:24px !important;margin-top:-14px !important}
 
 /* ── Calendar: compact but fully visible ── */
-.month-nav{padding:4px 10px 2px !important}
-.month-nav-title{font-size:12px !important}
-.calendar-wrap{padding:1px 5px 2px !important}
-.cal-grid-wk{gap:0 !important}
-.cal-dow,.cal-wk-hdr,.cal-wk-num{font-size:9px !important;padding:1px 0 !important}
-.cal-day{min-height:20px !important;border-radius:5px !important;padding:0 !important}
-.cal-day-num{font-size:11px !important}
-.cal-day.today .cal-day-num{width:17px !important;height:17px !important;font-size:9px !important}
+.month-nav{padding:6px 10px 3px !important}
+.month-nav-title{font-size:15px !important}
+.calendar-wrap{padding:2px 8px 3px !important}
+.cal-grid-wk{gap:1px !important}
+.cal-dow,.cal-wk-hdr,.cal-wk-num{font-size:10px !important;padding:2px 0 !important}
+.cal-day{min-height:32px !important;border-radius:7px !important;padding:1px 0 !important}
+.cal-day-num{font-size:14px !important}
+.cal-day.today .cal-day-num{width:22px !important;height:22px !important;font-size:11px !important}
 /* Override big cal-day from V4.1 standalone block */
 
 /* ── Month summary: compact ── */
-.month-summary{margin:2px 6px 2px !important;padding:4px 8px !important}
-.stat-label{font-size:8px !important}
-.stat-value{font-size:11px !important}
-.stat-value.big{font-size:13px !important}
+.month-summary{margin:3px 8px 3px !important;padding:7px 10px !important}
+.stat-label{font-size:9px !important}
+.stat-value{font-size:13px !important}
+.stat-value.big{font-size:16px !important}
 .cat-breakdown{margin-top:3px !important;gap:2px !important}
-.cat-row-name{font-size:9px !important;width:42px !important}
-.cat-row-amount{font-size:9px !important;min-width:40px !important}
-.cat-row-icon{font-size:12px !important;width:14px !important}
+.cat-row-name{font-size:10px !important;width:48px !important}
+.cat-row-amount{font-size:10px !important;min-width:44px !important}
+.cat-row-icon{font-size:13px !important;width:15px !important}
 
 /* ── Day panel: compact ── */
 .day-panel-header{padding:5px 8px !important}
